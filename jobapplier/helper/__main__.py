@@ -133,16 +133,28 @@ def ensure_signed_in(page) -> bool:
         return False
 
 
-def notify(title: str, message: str) -> None:
-    """A Mac notification with a sound, so you know when a form is waiting for you."""
+def notify(title: str, message: str, popup: bool = True) -> None:
+    """Get your attention on a Mac: a sound, a notification, and (by default) a pop-up window that stays
+    until you press OK. Banner notifications alone can be hidden by Focus or notification settings."""
     if sys.platform != "darwin":
         return
     q = lambda t: t.replace("\\", "\\\\").replace('"', '\\"')[:220]
+    try:
+        subprocess.Popen(["afplay", "/System/Library/Sounds/Glass.aiff"])
+    except Exception:
+        pass
     try:
         subprocess.run(["osascript", "-e", f'display notification "{q(message)}" with title "{q(title)}" sound name "Glass"'],
                        capture_output=True, timeout=10)
     except Exception:
         pass
+    if popup:
+        try:  # runs in the background so the helper carries on with the next job
+            subprocess.Popen(["osascript", "-e",
+                              f'display alert "{q(title)}" message "{q(message)}" buttons {{"OK"}} giving up after 3600'],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
 
 
 def mark(repo: Path, item: dict, status: str, detail: str = "") -> None:
@@ -190,7 +202,7 @@ def main(argv=None) -> None:
 
     if args.ping:
         notify("Job helper needs you: Test Company", "This is what a ping looks like. The application tab stays open for you.")
-        print("Sent a test notification. If you didn't see it, allow notifications for Script Editor in System Settings > Notifications.")
+        print("Sent a test ping: you should hear a sound and see a pop-up window (press OK to close it).")
         return
 
     from playwright.sync_api import sync_playwright
@@ -297,7 +309,7 @@ def main(argv=None) -> None:
         ctx.close()
 
     if args.test:
-        notify("Job helper test finished", f"{len(chosen)} filled in; nothing was submitted")
+        notify("Job helper test finished", f"{len(chosen)} filled in; nothing was submitted", popup=False)
         print("\nTest finished. Nothing was submitted and the tracker wasn't changed.")
         return
     git(repo, "add", "-A", "data")
