@@ -50,7 +50,7 @@ search:
     - {name: ElevenLabs, ats: ashby, token: elevenlabs}
     - {name: Synthesia, ats: ashby, token: synthesia}
 
-  # Optional aggregators (need free API keys, set as secrets):
+  # Optional aggregators (API keys set as secrets; Reed is free, Adzuna is paid after 25 trial calls):
   # ADZUNA_APP_ID + ADZUNA_APP_KEY  -> https://developer.adzuna.com
   # REED_API_KEY                    -> https://www.reed.co.uk/developers/jobseeker
   adzuna: {enabled: true, results_per_role: 50}

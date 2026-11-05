@@ -62,7 +62,7 @@ Prefer to pay per use instead? Set `matching.provider: anthropic`, use full mode
 
 | Key | Needed? | Where |
 |---|---|---|
-| `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | Recommended, free | [developer.adzuna.com](https://developer.adzuna.com) → Register → your app's id and key |
+| `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | Optional, paid | [developer.adzuna.com](https://developer.adzuna.com) → Register (choose "Personal job search"). New keys get 25 trial calls; regular use needs the API Access plan (about £8 a month). The daily run uses about 10 calls |
 | `REED_API_KEY` | Recommended, free | [reed.co.uk/developers/jobseeker](https://www.reed.co.uk/developers/jobseeker) |
 
 Add each one in your repo under **Settings → Secrets and variables → Actions → New repository secret**, using exactly the names above.

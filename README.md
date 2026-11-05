@@ -12,7 +12,7 @@ You don't need to write any code to use it. You copy the template, edit one sett
  find ──► filter ──► analyse + tailor ──► one-page check ──► queue ──► track
 ```
 
-1. **Find.** Searches company job boards directly (Greenhouse, Lever, Ashby), plus the Adzuna and Reed UK job APIs if you add free keys.
+1. **Find.** Searches company job boards directly (Greenhouse, Lever, Ashby), plus the Reed (free) and Adzuna (paid) UK job APIs if you add keys.
 2. **Filter.** Keeps jobs that match your target titles, locations (or remote), recency (e.g. last 21 days) and salary floor, and skips companies you exclude. Duplicates across sources are merged. Your first location is ranked first.
 3. **Screen and analyse.** A light Claude model scores every matching advert first, so only promising ones go further. Then a stronger model reads each one, pulls out its keywords, marks which ones are must-haves, checks each against your CV (already there, there in other words, or missing), and scores the fit from 0 to 100.
 4. **Tailor.** Claude rewrites your summary, the most relevant bullets and your skills lines to use the advert's wording where it's true, and puts the most relevant bullets first. Your Word file is edited in place, so fonts and layout don't change.
@@ -33,7 +33,7 @@ Full step-by-step guide: **[docs/SETUP.md](docs/SETUP.md)**. In short:
 1. Click **Use this template** → **Create a new repository** → choose **Private**. Your CV and job history will live there, so it must be private.
 2. In your private copy, delete the last three lines of `.gitignore` (`settings.yaml`, `cv/`, `data/`).
 3. Copy `settings.example.yaml` to `settings.yaml` and edit it. Add your CV as `cv/cv.docx`.
-4. Add secrets under **Settings → Secrets and variables → Actions**: `CLAUDE_CODE_OAUTH_TOKEN` (required; run `npx @anthropic-ai/claude-code setup-token` and sign in with your Claude account), plus `ADZUNA_APP_ID`/`ADZUNA_APP_KEY` and `REED_API_KEY` (optional, free).
+4. Add secrets under **Settings → Secrets and variables → Actions**: `CLAUDE_CODE_OAUTH_TOKEN` (required; run `npx @anthropic-ai/claude-code setup-token` and sign in with your Claude account), plus `REED_API_KEY` (optional, free) and `ADZUNA_APP_ID`/`ADZUNA_APP_KEY` (optional; Adzuna gives 25 trial calls, then about £8 a month).
 5. Go to **Actions → Daily job run → Run workflow**. After that it runs every morning.
 
 ## Running it on your own computer
@@ -69,7 +69,7 @@ Tracker statuses: Tailored → Awaiting approval (LinkedIn or manual) / Ready to
 ## Costs
 
 - GitHub Actions: free for a daily run on a private repo (well within the free minutes).
-- Adzuna and Reed: free API keys.
+- Reed: free API key. Adzuna: 25 free trial calls, then about £8 a month (optional; the run uses about 10 calls a day).
 - Claude: by default it runs through Claude Code on your existing Claude Pro/Max subscription, so there's no extra bill (it counts toward your plan's usage limits). If you'd rather use the pay-per-use Claude API, set `matching.provider: anthropic` and add `ANTHROPIC_API_KEY`.
 
 ## Privacy
