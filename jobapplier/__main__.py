@@ -98,7 +98,8 @@ def cmd_queue(args, settings):
     if not row:
         sys.exit(f"{args.job} is not in the tracker. Tailor it first.")
     found = _load_found()
-    job = found.get(args.job) or Job.from_dict(json.loads(Path(row["cv_file"]).parent.joinpath("job.json").read_text()))
+    saved = Path(row["cv_file"]).parent / "job.json"  # has the full advert and how it's applied to
+    job = Job.from_dict(json.loads(saved.read_text())) if saved.exists() else found.get(args.job)
     status = T.queue_status(job)
     answers = dict(settings.answers)
     answers["expected_salary"] = T.salary_answer(job, settings)
