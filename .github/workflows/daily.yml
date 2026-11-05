@@ -60,9 +60,19 @@ jobs:
         if: steps.check.outputs.ok == 'true'
         run: pip install -r requirements.txt
 
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.ok == 'true' && env.COMMAND == 'run'
+        with:
+          node-version: "22"
+
+      - name: Install Claude Code (uses your Claude subscription)
+        if: steps.check.outputs.ok == 'true' && env.COMMAND == 'run'
+        run: npm install -g @anthropic-ai/claude-code
+
       - name: Run
         if: steps.check.outputs.ok == 'true'
         env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}

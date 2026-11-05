@@ -1,10 +1,72 @@
-"""Claude calls: analyse a job description against the CV and propose truthful tailoring edits."""
+"""Claude calls: screen jobs, analyse a job description against the CV, and propose truthful edits.
+
+Two ways to reach Claude:
+  provider "claude-code" (default): the Claude Code CLI, signed in with your Claude subscription
+      (CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`). No per-use API bill.
+  provider "anthropic": the Claude API with ANTHROPIC_API_KEY, billed per use.
+"""
 from __future__ import annotations
 
-from typing import Literal
+import json
+import os
+import shutil
+import subprocess
+from typing import Literal, TypeVar
 
-import anthropic
 from pydantic import BaseModel, Field
+
+M = TypeVar("M", bound=BaseModel)
+
+
+class LLM:
+    def __init__(self, provider: str = "claude-code"):
+        if provider not in {"claude-code", "anthropic"}:
+            raise ValueError(f"unknown provider '{provider}' (use claude-code or anthropic)")
+        self.provider = provider
+        self._client = None
+
+    def parse(self, model: str, system: str, prompt: str, schema: type[M], max_tokens: int = 16000) -> M:
+        if self.provider == "claude-code":
+            return self._claude_code(model, system, prompt, schema)
+        return self._api(model, system, prompt, schema, max_tokens)
+
+    def _claude_code(self, model: str, system: str, prompt: str, schema: type[M]) -> M:
+        exe = shutil.which("claude")
+        if not exe:
+            raise RuntimeError("Claude Code is not installed (npm install -g @anthropic-ai/claude-code)")
+        cmd = [exe, "-p", "--output-format", "json", "--tools", "", "--model", model,
+               "--system-prompt", system, "--json-schema", json.dumps(schema.model_json_schema())]
+        r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=600,
+                           env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"})
+        try:
+            out = json.loads(r.stdout)
+        except json.JSONDecodeError:
+            raise RuntimeError(f"Claude Code failed: {(r.stderr or r.stdout)[-500:]}")
+        if out.get("is_error"):
+            raise RuntimeError(f"Claude Code error: {str(out.get('result'))[:500]}")
+        data = out.get("structured_output")
+        if data is None:
+            data = json.loads(out.get("result") or "null")
+        return schema.model_validate(data)
+
+    def _api(self, model: str, system: str, prompt: str, schema: type[M], max_tokens: int) -> M:
+        import anthropic
+
+        if self._client is None:
+            self._client = anthropic.Anthropic()
+        kw = {}
+        if not model.startswith("claude-haiku"):
+            # Re-run on a fallback model if a safety classifier declines (rare for CVs).
+            kw = {"extra_headers": {"anthropic-beta": "server-side-fallback-2026-07-01"},
+                  "extra_body": {"fallbacks": "default"}}
+        resp = self._client.messages.parse(model=model, max_tokens=max_tokens, system=system,
+                                           messages=[{"role": "user", "content": prompt}],
+                                           output_format=schema, **kw)
+        if resp.stop_reason == "refusal":
+            raise RuntimeError("Claude declined to process this job advert")
+        if resp.stop_reason == "max_tokens" or resp.parsed_output is None:
+            raise RuntimeError(f"Claude's answer was incomplete (stop_reason={resp.stop_reason})")
+        return resp.parsed_output
 
 
 class Keyword(BaseModel):
@@ -35,7 +97,8 @@ class Tailoring(BaseModel):
     bullet_order: list[str] = Field(description="Experience bullet ids, most relevant first")
     skills_edits: list[Edit] = Field(description="Rewritten skills lines (K ids), keeping each line's label")
     drop_order: list[str] = Field(description="B and X ids that matter least for this job, least relevant first, "
-                                              "used only if the CV runs over one page")
+                                              "used only if the CV runs over one page. Put quantified achievements "
+                                              "(numbers, results) and publications last")
 
 
 class Screen(BaseModel):
@@ -49,18 +112,10 @@ SCREEN_SYSTEM = """You screen job adverts for one candidate. Score how well the 
 (0-100), judging skills, experience level and domain. Be strict: 70+ means a recruiter would likely shortlist them."""
 
 
-def screen(client: anthropic.Anthropic, model: str, job_text: str, cv_text: str) -> Screen:
+def screen(llm: LLM, model: str, job_text: str, cv_text: str) -> Screen:
     """Cheap first pass so only promising jobs reach the (more expensive) tailoring step."""
-    resp = client.messages.parse(
-        model=model,
-        max_tokens=4000,
-        system=SCREEN_SYSTEM,
-        messages=[{"role": "user", "content": f"<job_advert>\n{job_text}\n</job_advert>\n\n<cv>\n{cv_text}\n</cv>"}],
-        output_format=Screen,
-    )
-    if resp.stop_reason == "refusal" or resp.parsed_output is None:
-        raise RuntimeError(f"screening failed (stop_reason={resp.stop_reason})")
-    return resp.parsed_output
+    return llm.parse(model, SCREEN_SYSTEM,
+                     f"<job_advert>\n{job_text}\n</job_advert>\n\n<cv>\n{cv_text}\n</cv>", Screen, max_tokens=4000)
 
 
 SYSTEM = """You tailor a candidate's CV to one job advert so it passes applicant tracking systems (ATS) \
@@ -72,31 +127,18 @@ extra skills. If the advert wants something the candidate lacks, mark it "missin
 - You may: reuse the advert's exact wording for experience the CV already shows ("ETL pipelines" -> "ETL/ELT \
 pipelines" only if ELT is in the CV or extra skills), spell out an acronym once ("Amazon Web Services (AWS)"), \
 reorder bullets and skills so must-haves come first, and shift the summary's emphasis to the role.
-- Keep British spelling, the candidate's voice, and roughly the same length per bullet (one page matters).
+- Keep British spelling and the candidate's voice. The CV must stay on one page, so the summary and every \
+edited bullet or skills line must be no longer than the original (same length or shorter).
 - Keep each skills line's label (the text before the colon) unchanged.
 - Don't stuff keywords: each bullet must still read as a natural sentence about real work.
 - Only include bullets in bullet_edits that you actually changed."""
 
 
-def tailor(client: anthropic.Anthropic, model: str, job_text: str, cv_outline: str, extra_skills: list[str]) -> Tailoring:
+def tailor(llm: LLM, model: str, job_text: str, cv_outline: str, extra_skills: list[str]) -> Tailoring:
     prompt = (
         f"<job_advert>\n{job_text}\n</job_advert>\n\n"
         f"<cv>\n{cv_outline}\n</cv>\n\n"
         f"<extra_skills>{', '.join(extra_skills) or 'none'}</extra_skills>\n\n"
         "Analyse the advert's keywords against the CV, score the fit, then return the tailoring edits."
     )
-    resp = client.messages.parse(
-        model=model,
-        max_tokens=16000,
-        system=SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-        output_format=Tailoring,
-        # Re-run on a fallback model if a safety classifier declines (rare for CVs).
-        extra_headers={"anthropic-beta": "server-side-fallback-2026-07-01"},
-        extra_body={"fallbacks": "default"},
-    )
-    if resp.stop_reason == "refusal":
-        raise RuntimeError("Claude declined to process this job advert")
-    if resp.stop_reason == "max_tokens" or resp.parsed_output is None:
-        raise RuntimeError(f"Claude's answer was incomplete (stop_reason={resp.stop_reason})")
-    return resp.parsed_output
+    return llm.parse(model, SYSTEM, prompt, Tailoring)

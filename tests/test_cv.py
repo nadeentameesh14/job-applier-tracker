@@ -60,3 +60,20 @@ def test_fit_to_one_page(sample, tmp_path):
     cv = CV(sample)
     pdf, pages, dropped = fit_to_pages(cv, tmp_path / "fit.docx", 1, [])
     assert pdf.exists() and pages == 1 and dropped == []
+
+
+def test_skills_label_split_across_runs(tmp_path):
+    d = docx.Document()
+    d.add_paragraph("TECHNICAL SKILLS")
+    p = d.add_paragraph()
+    for t in ["BI & ", "Visualisation", ": "]:
+        p.add_run(t).bold = True
+    p.add_run("Tableau, Excel")
+    path = tmp_path / "cv.docx"
+    d.save(path)
+    cv = CV(path)
+    cv.set_block_text("K1", "BI & Visualisation: Power BI, Tableau")
+    runs = cv.block("K1").para.runs
+    assert "".join(r.text for r in runs) == "BI & Visualisation: Power BI, Tableau"
+    assert runs[-1].text == " Power BI, Tableau" and not runs[-1].bold
+    assert all(r.bold for r in runs[:-1])

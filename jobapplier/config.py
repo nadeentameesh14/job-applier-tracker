@@ -38,6 +38,7 @@ class Settings:
     max_pages: int
     search: Search
     min_fit_score: int
+    provider: str
     model: str
     screen_model: str
     extra_skills: list[str]
@@ -82,8 +83,9 @@ def load_settings(path: str | Path = "settings.yaml") -> Settings:
         max_pages=int(raw.get("max_pages", 1)),
         search=search,
         min_fit_score=int(m.get("min_fit_score", 70)),
-        model=str(m.get("model", "claude-opus-5-5")),
-        screen_model=str(m.get("screen_model", "claude-haiku-5-5")),
+        provider=str(m.get("provider", "claude-code")),
+        model=str(m.get("model", "sonnet")),
+        screen_model=str(m.get("screen_model", "haiku")),
         extra_skills=list(raw.get("extra_skills") or []),
         answers=dict(raw.get("answers") or {}),
         apply={k: int(v) for k, v in (raw.get("apply") or {}).items()},

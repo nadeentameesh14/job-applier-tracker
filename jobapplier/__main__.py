@@ -65,12 +65,12 @@ def _pick_job(args) -> Job:
     return next(iter(found.values()))
 
 
-def cmd_tailor(args, settings, job: Job | None = None):
+def cmd_tailor(args, settings, job: Job | None = None, client=None):
     from .tailor import tailor_job
 
     job = job or _pick_job(args)
     print(f"Tailoring your CV for: {job.title} at {job.company} ...")
-    out = tailor_job(job, settings, DATA / "applications")
+    out = tailor_job(job, settings, DATA / "applications", client)
     trk = T.Tracker(DATA / "tracker.csv")
     missing = ", ".join(k.term for k in out.analysis.keywords if k.status == "missing")
     status = T.TAILORED if out.fit_score >= settings.min_fit_score and not out.analysis.red_flags else T.SKIPPED
@@ -109,13 +109,11 @@ def cmd_run(args, settings):
     caps = {"linkedin": settings.apply.get("daily_cap_linkedin", 15), "auto": settings.apply.get("daily_cap_auto", 15),
             "manual": settings.apply.get("daily_cap_linkedin", 15)}
     done = {"linkedin": 0, "auto": 0, "manual": 0}
-    import anthropic
-
     from .cv import CV
-    from .llm import screen
+    from .llm import LLM, screen
     from .tailor import ensure_full_description
 
-    client = anthropic.Anthropic()
+    client = LLM(settings.provider)
     cv_text = CV(settings.cv_path).full_text()
     for job in kept:
         m = job.apply_method
@@ -135,7 +133,7 @@ def cmd_run(args, settings):
             print(f"  - skipped {job.title} at {job.company}: score {sc.fit_score}. {sc.reason}")
             continue
         try:
-            out = cmd_tailor(args, settings, job)
+            out = cmd_tailor(args, settings, job, client)
         except Exception as e:
             print(f"  ! could not tailor {job.title} at {job.company}: {e}")
             continue

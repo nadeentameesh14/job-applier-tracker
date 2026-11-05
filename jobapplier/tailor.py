@@ -7,8 +7,6 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import anthropic
-
 from . import llm
 from .config import Settings
 from .cv import CV, fit_to_pages
@@ -66,11 +64,11 @@ def coverage(keywords: list[llm.Keyword], text: str) -> float:
     return round(100 * sum(_present(k.term, text) for k in keywords) / len(keywords), 1)
 
 
-def tailor_job(job: Job, settings: Settings, out_root: Path, client: anthropic.Anthropic | None = None) -> Outcome:
+def tailor_job(job: Job, settings: Settings, out_root: Path, client: llm.LLM | None = None) -> Outcome:
     job = ensure_full_description(job)
     cv = CV(settings.cv_path)
     master = cv.full_text()
-    client = client or anthropic.Anthropic()
+    client = client or llm.LLM(settings.provider)
     job_text = f"Title: {job.title}\nCompany: {job.company}\nLocation: {job.location}\n\n{job.description}"
     t = llm.tailor(client, settings.model, job_text, cv.outline(), settings.extra_skills)
 

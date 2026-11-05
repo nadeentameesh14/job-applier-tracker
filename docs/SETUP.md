@@ -1,6 +1,6 @@
 # Setup guide
 
-This takes about 20 minutes. You need a GitHub account, your CV as a Word file (`.docx`), and a credit card for the Claude API, which you pay for by usage.
+This takes about 20 minutes. You need a GitHub account, your CV as a Word file (`.docx`), and a Claude Pro or Max subscription. (Or, instead of a subscription, a Claude API key paid by usage.)
 
 ## 1. Make your own private copy
 
@@ -49,11 +49,19 @@ Tips for a CV that tailors well:
 | `apply` | Daily caps per channel |
 | `max_pages` | Tailored CVs are trimmed to fit this many pages |
 
-## 5. Get your API keys
+## 5. Get your keys
+
+**Claude (required).** The bot uses Claude Code with your Claude subscription, so there's no separate bill.
+1. Install [Node.js](https://nodejs.org) on your computer if you don't have it.
+2. In a terminal, run `npx @anthropic-ai/claude-code setup-token`. A browser opens: sign in with your Claude account.
+3. Copy the token it prints (it starts with `sk-ant-oat`) and save it as the secret `CLAUDE_CODE_OAUTH_TOKEN`.
+
+Prefer to pay per use instead? Set `matching.provider: anthropic`, use full model ids (e.g. `claude-haiku-5-5`, `claude-sonnet-5-5`), and add the secret `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com).
+
+**Job search (optional, free).**
 
 | Key | Needed? | Where |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | [console.anthropic.com](https://console.anthropic.com) → API Keys. Add a little credit (e.g. £10 covers roughly 100 tailored CVs) |
 | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | Recommended, free | [developer.adzuna.com](https://developer.adzuna.com) → Register → your app's id and key |
 | `REED_API_KEY` | Recommended, free | [reed.co.uk/developers/jobseeker](https://www.reed.co.uk/developers/jobseeker) |
 
@@ -62,7 +70,7 @@ Add each one in your repo under **Settings → Secrets and variables → Actions
 ## 6. Run it
 
 1. Go to the **Actions** tab. If asked, click **I understand my workflows, go ahead and enable them**.
-2. Click **Daily job run → Run workflow**. Choose `find` first to check the search without spending anything on Claude, then `run` for the full pipeline.
+2. Click **Daily job run → Run workflow**. Choose `find` first to check the search without using Claude, then `run` for the full pipeline.
 3. When the run finishes, open it and download **results** at the bottom, or look in the `data/` folder of your repo:
    - `data/tracker.csv`: open it in Excel or import it into Google Sheets
    - `data/applications/…/report.md`: what was changed for each job, and why
@@ -72,13 +80,12 @@ From then on it runs every day at 06:00 UTC. To change the time, edit the `cron`
 
 ## Running it on your laptop instead
 
-1. Install [Python 3.11+](https://www.python.org/downloads/) and [LibreOffice](https://www.libreoffice.org/download/) (used to make PDFs and count pages).
+1. Install [Python 3.11+](https://www.python.org/downloads/), [LibreOffice](https://www.libreoffice.org/download/) (used to make PDFs and count pages) and Claude Code (`npm install -g @anthropic-ai/claude-code`, then run `claude` once to sign in).
 2. Then:
 
 ```bash
 git clone <your private repo url> && cd <repo>
 pip install -r requirements.txt
-export ANTHROPIC_API_KEY=sk-ant-...   # Windows PowerShell: $env:ANTHROPIC_API_KEY="sk-ant-..."
 python -m jobapplier find
 python -m jobapplier tailor --job <id from the list>
 python -m jobapplier queue --job <id>

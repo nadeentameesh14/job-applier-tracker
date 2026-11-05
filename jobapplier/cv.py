@@ -8,6 +8,8 @@ The CV is split into blocks with stable ids:
 """
 from __future__ import annotations
 
+import copy
+
 import re
 import shutil
 import subprocess
@@ -143,6 +145,33 @@ class CV:
             for r in runs[1:]:
                 r._r.getparent().remove(r._r)
 
+    @staticmethod
+    def _set_skills(p: Paragraph, text: str) -> None:
+        """Replace the values of a 'Label: values' line, keeping the label runs and their formatting."""
+        runs = p.runs
+        idx = next((i for i, r in enumerate(runs) if ":" in r.text), None)
+        if idx is None:
+            CV._set_text(p, text)
+            return
+        label = "".join(r.text for r in runs[: idx + 1]).split(":", 1)[0]
+        value = text.split(":", 1)[1] if ":" in text and text.split(":", 1)[0].strip().lower() == label.strip().lower() else text
+        value = " " + value.strip()
+        colon_run = runs[idx]
+        head, _, tail = colon_run.text.partition(":")
+        colon_run.text = head + ":"
+        rest = runs[idx + 1:]
+        if rest:
+            rest[0].text = value
+            for r in rest[1:]:
+                r._r.getparent().remove(r._r)
+        else:
+            new_r = copy.deepcopy(colon_run._r)
+            colon_run._r.addnext(new_r)
+            from docx.text.run import Run
+            r = Run(new_r, p)
+            r.text = value
+            r.bold = False
+
     def set_block_text(self, bid: str, text: str) -> None:
         b = self.block(bid)
         if b is None or b.para is None:
@@ -154,12 +183,7 @@ class CV:
             for c in b.cont:
                 c._p.getparent().remove(c._p)
             b.cont = []
-            label = b.para.runs[0].text if b.para.runs else ""
-            if label.strip().endswith(":") and len(b.para.runs) > 1:
-                value = text.split(":", 1)[1] if text.lower().startswith(label.strip().lower()) else text
-                self._set_text(b.para, " " + value.strip(), keep_first_run=True)
-            else:
-                self._set_text(b.para, text)
+            self._set_skills(b.para, text)
         else:
             self._set_text(b.para, text)
         b.text = BULLET_RE.sub("", text) if b.kind == "bullet" else text
@@ -242,9 +266,19 @@ class CV:
         bullets = [b.id for b in self.blocks if b.kind == "bullet"][::-1]
         return items + bullets
 
+    def _prefer_explicit_fonts(self) -> None:
+        """A run that names a font (e.g. Liberation Sans) but also points at a theme font renders in the
+        theme font (often Cambria). Drop the theme pointer so the named font shows, as the author intended."""
+        w = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+        for rf in self.doc.element.body.iter(f"{w}rFonts"):
+            for slot in ("ascii", "hAnsi"):
+                if rf.get(f"{w}{slot}") and rf.get(f"{w}{slot}Theme"):
+                    del rf.attrib[f"{w}{slot}Theme"]
+
     def save(self, path: str | Path) -> Path:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
+        self._prefer_explicit_fonts()
         self.doc.save(str(path))
         return path
 
@@ -277,21 +311,43 @@ def page_count(pdf_path: str | Path) -> int:
 
 
 def fit_to_pages(cv: CV, out_docx: Path, max_pages: int, drop_order: list[str]) -> tuple[Path, int, list[str]]:
-    """Save, render, and drop blocks in drop_order until the PDF is within max_pages."""
-    dropped: list[str] = []
+    """Save, render, and drop blocks in drop_order until the PDF is within max_pages.
+
+    Removing a long item can free more room than needed, so afterwards each dropped item is
+    tried again (most important first) and kept if the CV still fits.
+    """
+    out_docx = Path(out_docx)
+    base = out_docx.with_name(out_docx.stem + ".base.docx")
+    cv.save(base)
     order = [b for b in drop_order if cv.block(b)] + [b for b in cv.default_drop_order() if b not in drop_order]
-    cv.save(out_docx)
-    pdf = to_pdf(out_docx)
-    pages = page_count(pdf)
-    for bid in order:
-        if pages <= max_pages:
-            break
-        if cv.remove_block(bid):
-            dropped.append(bid)
-            cv.save(out_docx)
-            pdf = to_pdf(out_docx)
-            pages = page_count(pdf)
-    return pdf, pages, dropped
+
+    def render(excluded: list[str]) -> tuple[Path, int, list[str]]:
+        c = CV(base)
+        removed = [bid for bid in excluded if c.remove_block(bid)]
+        c.save(out_docx)
+        pdf = to_pdf(out_docx)
+        return pdf, page_count(pdf), removed
+
+    try:
+        dropped: list[str] = []
+        pdf, pages, _ = render(dropped)
+        for bid in order:
+            if pages <= max_pages:
+                break
+            trial = dropped + [bid]
+            pdf_t, pages_t, removed = render(trial)
+            if bid in removed:
+                dropped, pdf, pages = removed, pdf_t, pages_t
+        if pages <= max_pages and dropped:
+            for bid in reversed(list(dropped)):
+                trial = [d for d in dropped if d != bid]
+                pdf_t, pages_t, removed = render(trial)
+                if pages_t <= max_pages:
+                    dropped, pdf, pages = removed, pdf_t, pages_t
+            pdf, pages, dropped = render(dropped)
+        return pdf, pages, dropped
+    finally:
+        base.unlink(missing_ok=True)
 
 
 def clone(cv: CV) -> CV:
