@@ -176,6 +176,8 @@ def main(argv=None) -> None:
     ap.add_argument("--test", action="store_true", help="fill in everything but don't press Submit")
     ap.add_argument("--no-restart", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--diagnose", metavar="JOB_URL", help="open one job, click Easy Apply and save what the page looks like")
+    ap.add_argument("--ask", action="append", default=[], metavar="WORDS",
+                    help="always stop and ask you at questions containing these words (can repeat)")
     ap.add_argument("--login", action="store_true", help="open the browser to sign in to LinkedIn, then exit")
     args = ap.parse_args(argv)
     repo = Path(args.repo).resolve()
@@ -260,7 +262,9 @@ def main(argv=None) -> None:
                 res = apply(page, i["url"], pdf, {**base, "answers": {**settings.answers, **i.get("answers", {})},
                                                   "job": f"{i['title']} at {i['company']}",
                                                   "job_title": i["title"].removeprefix("TEST - "),
-                                                  "job_description": desc}, submit=not args.test)
+                                                  "job_description": desc,
+                                                  "always_ask": list(settings.apply.get("always_ask") or []) + args.ask},
+                            submit=not args.test)
             except Exception as e:
                 res = type("R", (), {"status": "error", "detail": str(e)[:200]})()
             print(res.status + (f": {res.detail}" if res.detail else ""))

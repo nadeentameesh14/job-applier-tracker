@@ -155,6 +155,9 @@ def _fill_step(modal, ctx: dict) -> list[str]:
     unknown: list[str] = []
 
     def answer(label: str, options: list[str] | None = None) -> str | None:
+        for pat in ctx.get("always_ask", []):  # questions you want to answer yourself
+            if pat and re.search(pat, label, re.I):
+                return None
         v = A.lookup(label, ctx["profile"], {**ctx["answers"], "job_title": ctx.get("job_title", "")})
         if v == "__visa__":
             # a free-text box gets a true answer that doesn't give the date; a yes/no choice waits for you
