@@ -119,7 +119,7 @@ def cmd_run(args, settings):
             "manual": settings.apply.get("daily_cap_linkedin", 15)}
     done = {"linkedin": 0, "auto": 0, "manual": 0}
     from .cv import CV
-    from .llm import LLM, screen
+    from .llm import LLM, AuthError, screen
     from .tailor import ensure_full_description
 
     client = LLM(settings.provider)
@@ -140,6 +140,9 @@ def cmd_run(args, settings):
             screened += 1
             sc = screen(client, settings.screen_model,
                         f"Title: {job.title}\nCompany: {job.company}\nLocation: {job.location}\n\n{job.description}", cv_text)
+        except AuthError as e:
+            print(f"  ! Stopping: {e}")
+            raise SystemExit(1)
         except Exception as e:
             print(f"  ! could not screen {job.title} at {job.company}: {e}")
             continue

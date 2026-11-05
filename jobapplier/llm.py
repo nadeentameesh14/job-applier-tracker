@@ -18,6 +18,10 @@ from pydantic import BaseModel, Field
 M = TypeVar("M", bound=BaseModel)
 
 
+class AuthError(RuntimeError):
+    """Sign-in or usage problem: every later call would fail too, so the run should stop."""
+
+
 class LLM:
     def __init__(self, provider: str = "claude-code"):
         if provider not in {"claude-code", "anthropic"}:
@@ -36,14 +40,20 @@ class LLM:
             raise RuntimeError("Claude Code is not installed (npm install -g @anthropic-ai/claude-code)")
         cmd = [exe, "-p", "--output-format", "json", "--tools", "", "--model", model,
                "--system-prompt", system, "--json-schema", json.dumps(schema.model_json_schema())]
-        r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=600,
-                           env={**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"})
+        env = {**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
+        if env.get("CLAUDE_CODE_OAUTH_TOKEN"):
+            # tokens copied from a terminal often pick up line breaks where the text wrapped
+            env["CLAUDE_CODE_OAUTH_TOKEN"] = "".join(env["CLAUDE_CODE_OAUTH_TOKEN"].split())
+        r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=600, env=env)
         try:
             out = json.loads(r.stdout)
         except json.JSONDecodeError:
             raise RuntimeError(f"Claude Code failed: {(r.stderr or r.stdout)[-500:]}")
         if out.get("is_error"):
-            raise RuntimeError(f"Claude Code error: {str(out.get('result'))[:500]}")
+            msg = str(out.get("result"))[:500]
+            if any(w in msg.lower() for w in ("auth", "login", "credit balance", "usage limit")):
+                raise AuthError(f"Claude Code can't sign in or is out of usage: {msg}")
+            raise RuntimeError(f"Claude Code error: {msg}")
         data = out.get("structured_output")
         if data is None:
             data = json.loads(out.get("result") or "null")
