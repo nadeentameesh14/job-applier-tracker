@@ -124,7 +124,11 @@ def cmd_run(args, settings):
 
     client = LLM(settings.provider)
     cv_text = CV(settings.cv_path).full_text()
+    screened = 0
     for job in kept:
+        if screened >= settings.max_screen:
+            print(f"  Reached max_screen_per_run ({settings.max_screen}); the rest wait for tomorrow.")
+            break
         m = job.apply_method
         if done[m] >= caps[m]:
             continue
@@ -133,6 +137,7 @@ def cmd_run(args, settings):
             m = job.apply_method  # a LinkedIn job may turn out to apply on the company's own site
             if done[m] >= caps[m]:
                 continue
+            screened += 1
             sc = screen(client, settings.screen_model,
                         f"Title: {job.title}\nCompany: {job.company}\nLocation: {job.location}\n\n{job.description}", cv_text)
         except Exception as e:

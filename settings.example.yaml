@@ -69,6 +69,8 @@ search:
 matching:
   # Jobs scoring below this (0-100) against your CV are skipped.
   min_fit_score: 70
+  # At most this many jobs are scored per run (best matches first), to keep the run under an hour.
+  max_screen_per_run: 60
   # How to reach Claude:
   #   claude-code: uses your Claude subscription via Claude Code (secret CLAUDE_CODE_OAUTH_TOKEN). No API bill.
   #   anthropic:   uses the Claude API (secret ANTHROPIC_API_KEY), billed per use.

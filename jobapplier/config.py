@@ -46,6 +46,7 @@ class Settings:
     answers: dict[str, Any]
     apply: dict[str, int]
     root: Path
+    max_screen: int = 60
 
 
 def load_settings(path: str | Path = "settings.yaml") -> Settings:
@@ -92,4 +93,5 @@ def load_settings(path: str | Path = "settings.yaml") -> Settings:
         answers=dict(raw.get("answers") or {}),
         apply={k: int(v) for k, v in (raw.get("apply") or {}).items()},
         root=root,
+        max_screen=int(m.get("max_screen_per_run", 60)),
     )
