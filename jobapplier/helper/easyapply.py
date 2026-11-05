@@ -14,7 +14,55 @@ from pathlib import Path
 
 from . import answers as A
 
-MODAL = "div.jobs-easy-apply-modal, div[data-test-modal], div.artdeco-modal"
+MODAL = "div.jobs-easy-apply-modal, div[data-test-modal], div.artdeco-modal, [role=dialog], [aria-modal=true]"
+DEBUG_DIR = Path.home() / ".job-applier" / "debug"
+
+
+def find_modal(page, timeout: float = 20):
+    """The Easy Apply window. LinkedIn renders it in several ways (classic modal, a dialog inside a
+    shadow root, or a separate apply page), so look for any visible dialog that holds a form or an
+    apply button, in the page and its frames, and wait for it to appear."""
+    end = time.time() + timeout
+    while time.time() < end:
+        for fr in [page.main_frame, *page.frames]:
+            try:
+                cands = fr.locator(MODAL)
+                for i in range(min(cands.count(), 10)):
+                    c = cands.nth(i)
+                    if not c.is_visible():
+                        continue
+                    if c.locator("input, select, textarea, button").count():
+                        txt = (c.inner_text() or "").lower()
+                        if any(w in txt for w in ("apply", "contact info", "resume", "next", "review", "submit")):
+                            return c
+            except Exception:
+                continue
+        # newer layout: the apply flow is the page itself (url ends in /apply/)
+        if "/apply" in page.url and page.locator("form").count():
+            return page.locator("form").first.locator("xpath=..")
+        time.sleep(1)
+    return None
+
+
+def dump_debug(page, name: str) -> str:
+    """Save a screenshot and the page's HTML (including shadow roots) so the problem can be fixed."""
+    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+    base = DEBUG_DIR / re.sub(r"[^A-Za-z0-9_-]+", "_", name)[:60]
+    try:
+        page.screenshot(path=str(base) + ".png", full_page=False)
+    except Exception:
+        pass
+    try:
+        html = page.evaluate("""() => {
+            const ser = n => { let h = n.outerHTML || '';
+                n.querySelectorAll('*').forEach(e => { if (e.shadowRoot) h += '\n<!--SHADOW of ' + e.tagName + '-->' + ser(e.shadowRoot); });
+                return h; };
+            return location.href + '\n' + ser(document.documentElement);
+        }""")
+        Path(str(base) + ".html").write_text(html)
+    except Exception:
+        pass
+    return str(base) + ".html"
 
 
 @dataclass
@@ -31,7 +79,9 @@ def _label_for(field) -> str:
     try:
         txt = field.evaluate(
             """el => {
-                const id = el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+                if (el.labels && el.labels.length) return el.labels[0].innerText;
+                const root = el.getRootNode ? el.getRootNode() : document;  // works inside shadow roots too
+                const id = el.id && root.querySelector(`label[for="${CSS.escape(el.id)}"]`);
                 if (id) return id.innerText;
                 const fs = el.closest('fieldset'); if (fs) { const l = fs.querySelector('legend'); if (l) return l.innerText; }
                 const g = el.closest('.jobs-easy-apply-form-element, .fb-dash-form-element, div');
@@ -124,21 +174,26 @@ def apply(page, job_url: str, cv_pdf: Path, ctx: dict, submit: bool = True) -> R
     pause(2, 4)
     if page.get_by_text(re.compile(r"Applied \d+ \w+ ago|Application submitted", re.I)).count():
         return Result("already_applied")
-    btn = page.locator("button.jobs-apply-button, button:has-text('Easy Apply')").first
+    btn = page.locator("button.jobs-apply-button, button:has-text('Easy Apply'), a:has-text('Easy Apply')").first
+    try:
+        btn.wait_for(state="visible", timeout=10_000)
+    except Exception:
+        pass
     if not btn.count() or "easy apply" not in (btn.inner_text() or "").lower():
         return Result("not_easy_apply", "No Easy Apply button (the job may apply on the company site or be closed)")
     btn.click()
     pause(1.5, 3)
     ctx = {**ctx, "cv_pdf": str(cv_pdf)}
     for step in range(12):
-        modal = page.locator(MODAL).first
-        if not modal.count():
-            return Result("error", "The Easy Apply window didn't open")
+        modal = find_modal(page, timeout=20 if step == 0 else 8)
+        if modal is None:
+            f = dump_debug(page, f"{job_url.rstrip('/').split('/')[-1]}_step{step}")
+            return Result("error", f"Couldn't find the Easy Apply window (details saved to {f})")
         follow = modal.locator("input#follow-company-checkbox:checked")
         if follow.count():
             modal.locator("label[for=follow-company-checkbox]").click()
         unknown = _fill_step(modal, ctx)
-        submit_btn = modal.locator("button[aria-label='Submit application'], button:has-text('Submit application')").first
+        submit_btn = modal.get_by_role("button", name=re.compile(r"submit application|^submit$", re.I)).first
         if submit_btn.count() and submit_btn.is_visible():
             if not submit:
                 return Result("needs_you", "Test mode: everything is filled in; review it and press Submit yourself")
@@ -148,10 +203,10 @@ def apply(page, job_url: str, cv_pdf: Path, ctx: dict, submit: bool = True) -> R
             if done.count():
                 done.click()
             return Result("applied")
-        nxt = modal.locator("button[aria-label='Continue to next step'], button[aria-label='Review your application'], "
-                            "button:has-text('Next'), button:has-text('Review')").first
+        nxt = modal.get_by_role("button", name=re.compile(r"continue to next step|review your application|^next$|^review$|^continue$", re.I)).first
         if not nxt.count():
-            return Result("needs_you", "Couldn't find the Next button")
+            f = dump_debug(page, f"{job_url.rstrip('/').split('/')[-1]}_nonext{step}")
+            return Result("needs_you", f"Couldn't find the Next button (details saved to {f})")
         nxt.click()
         pause(1.5, 3)
         errs = modal.locator(".artdeco-inline-feedback--error, [data-test-form-element-error-messages]")

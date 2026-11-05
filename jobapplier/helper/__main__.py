@@ -28,6 +28,7 @@ from .. import tracker as T
 
 PROFILE_DIR = Path.home() / ".job-applier" / "browser"
 PORT = 8765
+TEST_MODE = False
 
 
 def git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -43,7 +44,8 @@ def load_queue(repo: Path) -> list[dict]:
     items = []
     for f in sorted((repo / "data" / "applications").glob("*/application.json")):
         a = json.loads(f.read_text())
-        if a.get("apply_method") != "linkedin" or a.get("status") != T.AWAITING_APPROVAL:
+        ok = {T.AWAITING_APPROVAL, "Needs you"} if TEST_MODE else {T.AWAITING_APPROVAL}  # a test can retry ones that got stuck
+        if a.get("apply_method") != "linkedin" or a.get("status") not in ok:
             continue
         job = json.loads((f.parent / "job.json").read_text()) if (f.parent / "job.json").exists() else {}
         row = trk.get(a["job_id"], {})
@@ -106,7 +108,8 @@ def approval_page(items: list[dict]) -> list[str] | None:
 
 def browser(pw):
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-    kw = dict(user_data_dir=str(PROFILE_DIR), headless=False, viewport={"width": 1280, "height": 900})
+    # no fixed viewport: the page fills the real window, which opens maximised
+    kw = dict(user_data_dir=str(PROFILE_DIR), headless=False, no_viewport=True, args=["--start-maximized", "--window-position=0,0", "--window-size=1440,900"])
     try:
         return pw.chromium.launch_persistent_context(channel="chrome", **kw)  # your installed Chrome
     except Exception:
@@ -126,6 +129,8 @@ def ensure_signed_in(page) -> bool:
 
 
 def mark(repo: Path, item: dict, status: str, detail: str = "") -> None:
+    if TEST_MODE:  # a test run never changes the tracker, so the same jobs can be tried again
+        return
     f = Path(item["folder"]) / "application.json"
     a = json.loads(f.read_text())
     a["status"], a["detail"] = status, detail
@@ -155,6 +160,8 @@ def main(argv=None) -> None:
     ap.add_argument("--login", action="store_true", help="open the browser to sign in to LinkedIn, then exit")
     args = ap.parse_args(argv)
     repo = Path(args.repo).resolve()
+    global TEST_MODE
+    TEST_MODE = args.test
 
     from playwright.sync_api import sync_playwright
 
@@ -224,6 +231,9 @@ def main(argv=None) -> None:
             input("Test run finished. Look over the filled-in forms, then press Enter to close the browser...")
         ctx.close()
 
+    if args.test:
+        print("\nTest finished. Nothing was submitted and the tracker wasn't changed.")
+        return
     git(repo, "add", "-A", "data")
     git(repo, "commit", "-m", f"Laptop helper: applied to {applied} on {date.today().isoformat()}")
     pushed = git(repo, "push")
