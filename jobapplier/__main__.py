@@ -132,6 +132,10 @@ def cmd_run(args, settings):
     kept = cmd_find(args, settings)
     caps = {"linkedin": settings.apply.get("daily_cap_linkedin", 15), "auto": settings.apply.get("daily_cap_auto", 15),
             "manual": settings.apply.get("daily_cap_linkedin", 15)}
+    if getattr(args, "test", False):
+        settings.max_screen = 15
+        caps = {k: min(v, 1) for k, v in caps.items()}
+        print("Test run: scoring up to 15 jobs, tailoring at most 1 per apply method.")
     done = {"linkedin": 0, "auto": 0, "manual": 0}
     from .cv import CV
     from .llm import LLM, AuthError, screen
@@ -200,6 +204,7 @@ def main(argv=None):
     r = sub.add_parser("run", help="find + tailor + queue, up to the daily caps")
     r.add_argument("--limit", type=int, default=30)
     r.add_argument("--jd-file", default=None); r.add_argument("--job", default=None)
+    r.add_argument("--test", action="store_true", help="small test run: score 15 jobs, tailor and queue at most 2")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING, format="%(message)s")
     settings = load_settings(args.settings)

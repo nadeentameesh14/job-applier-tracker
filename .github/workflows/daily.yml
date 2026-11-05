@@ -10,6 +10,10 @@ on:
         type: choice
         options: [run, find]
         default: run
+      test:
+        description: "Small test run (score 15 jobs, tailor a couple)"
+        type: boolean
+        default: false
       settings:
         description: "Settings file"
         default: settings.yaml
@@ -79,7 +83,7 @@ jobs:
           REED_API_KEY: ${{ secrets.REED_API_KEY }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-        run: python -m jobapplier --settings "$SETTINGS" "$COMMAND" | tee run.log
+        run: python -m jobapplier --settings "$SETTINGS" "$COMMAND" $([ "$COMMAND" = run ] && [ "${{ inputs.test }}" = true ] && echo --test) | tee run.log
 
       - name: Save results to the repo
         if: steps.check.outputs.ok == 'true' && github.event.repository.private == true
