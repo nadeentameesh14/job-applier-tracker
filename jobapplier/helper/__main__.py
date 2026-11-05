@@ -178,6 +178,7 @@ def main(argv=None) -> None:
     ap.add_argument("--diagnose", metavar="JOB_URL", help="open one job, click Easy Apply and save what the page looks like")
     ap.add_argument("--ask", action="append", default=[], metavar="WORDS",
                     help="always stop and ask you at questions containing these words (can repeat)")
+    ap.add_argument("--ping", action="store_true", help="just show a test notification")
     ap.add_argument("--login", action="store_true", help="open the browser to sign in to LinkedIn, then exit")
     # unknown options are allowed until after the update below, so a newer option works on first use
     args, unknown_opts = ap.parse_known_args(argv)
@@ -186,6 +187,11 @@ def main(argv=None) -> None:
     repo = Path(args.repo).resolve()
     global TEST_MODE
     TEST_MODE = args.test
+
+    if args.ping:
+        notify("Job helper needs you: Test Company", "This is what a ping looks like. The application tab stays open for you.")
+        print("Sent a test notification. If you didn't see it, allow notifications for Script Editor in System Settings > Notifications.")
+        return
 
     from playwright.sync_api import sync_playwright
 
@@ -291,6 +297,7 @@ def main(argv=None) -> None:
         ctx.close()
 
     if args.test:
+        notify("Job helper test finished", f"{len(chosen)} filled in; nothing was submitted")
         print("\nTest finished. Nothing was submitted and the tracker wasn't changed.")
         return
     git(repo, "add", "-A", "data")
