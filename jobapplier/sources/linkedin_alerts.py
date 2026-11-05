@@ -49,14 +49,19 @@ def fetch_ids(address: str, password: str, days: int = 3) -> list[str]:
     with imaplib.IMAP4_SSL("imap.gmail.com") as M:
         M.login(address, password)
         M.select('"[Gmail]/All Mail"', readonly=True)
-        for sender in SENDERS:
+        nums: list[bytes] = []
+        for sender in SENDERS:  # alerts sent or auto-forwarded straight from LinkedIn
             typ, data = M.search(None, "FROM", f'"{sender}"', "SINCE", since)
-            for num in (data[0].split() if typ == "OK" and data and data[0] else []):
-                typ, msg = M.fetch(num, "(BODY.PEEK[])")
-                if typ == "OK" and msg and isinstance(msg[0], tuple):
-                    for jid in job_ids(_bodies(email.message_from_bytes(msg[0][1]))):
-                        if jid not in ids:
-                            ids.append(jid)
+            nums += data[0].split() if typ == "OK" and data and data[0] else []
+        # alerts forwarded by hand come "from" you, so also look for LinkedIn job links in the text
+        typ, data = M.search(None, "X-GM-RAW", f'"jobalerts-noreply@linkedin.com newer_than:{days}d"')
+        nums += data[0].split() if typ == "OK" and data and data[0] else []
+        for num in dict.fromkeys(nums):
+            typ, msg = M.fetch(num, "(BODY.PEEK[])")
+            if typ == "OK" and msg and isinstance(msg[0], tuple):
+                for jid in job_ids(_bodies(email.message_from_bytes(msg[0][1]))):
+                    if jid not in ids:
+                        ids.append(jid)
     return ids
 
 
