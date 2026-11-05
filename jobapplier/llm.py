@@ -150,7 +150,8 @@ reorder bullets and skills so must-haves come first, and shift the summary's emp
 edited bullet or skills line must be no longer than the original (same length or shorter).
 - Keep each skills line's label (the text before the colon) unchanged.
 - Don't stuff keywords: each bullet must still read as a natural sentence about real work.
-- Only include bullets in bullet_edits that you actually changed."""
+- Only include bullets in bullet_edits that you actually changed.
+- The candidate facts (right to work, notice period, location) are for judging fit only. Never write them into the CV."""
 
 
 def tailor(llm: LLM, model: str, job_text: str, cv_outline: str, extra_skills: list[str], facts: str = "") -> Tailoring:
