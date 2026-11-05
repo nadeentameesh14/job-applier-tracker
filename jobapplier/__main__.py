@@ -85,7 +85,7 @@ def cmd_tailor(args, settings, job: Job | None = None, client=None):
     status = T.TAILORED if out.fit_score >= settings.min_fit_score and not out.analysis.red_flags else T.SKIPPED
     trk.upsert(out.job, fit_score=out.fit_score, coverage_after=out.coverage_after, missing_keywords=missing,
                cv_file=str(out.pdf), status=status, salary_answer=T.salary_answer(out.job, settings),
-               notes="; ".join(out.analysis.red_flags))
+               notes="; ".join(out.analysis.red_flags + out.analysis.concerns))
     trk.save()
     print((out.folder / "report.md").read_text())
     print(f"Files: {out.docx}\n       {out.pdf}")
@@ -139,7 +139,8 @@ def cmd_run(args, settings):
                 continue
             screened += 1
             sc = screen(client, settings.screen_model,
-                        f"Title: {job.title}\nCompany: {job.company}\nLocation: {job.location}\n\n{job.description}", cv_text)
+                        f"Title: {job.title}\nCompany: {job.company}\nLocation: {job.location}\n\n{job.description}", cv_text,
+                        settings.candidate_facts())
         except AuthError as e:
             print(f"  ! Stopping: {e}")
             raise SystemExit(1)
@@ -148,7 +149,7 @@ def cmd_run(args, settings):
             continue
         if sc.fit_score < settings.min_fit_score or sc.red_flags:
             trk = T.Tracker(DATA / "tracker.csv")  # reload: tailor/queue steps write to it too
-            trk.upsert(job, status=T.SKIPPED, fit_score=sc.fit_score, notes="; ".join([sc.reason, *sc.red_flags]))
+            trk.upsert(job, status=T.SKIPPED, fit_score=sc.fit_score, notes="; ".join([sc.reason, *sc.red_flags, *sc.concerns]))
             trk.save()
             print(f"  - skipped {job.title} at {job.company}: score {sc.fit_score}. {sc.reason}")
             continue

@@ -72,7 +72,7 @@ def tailor_job(job: Job, settings: Settings, out_root: Path, client: llm.LLM | N
     master = cv.full_text()
     client = client or llm.LLM(settings.provider)
     job_text = f"Title: {job.title}\nCompany: {job.company}\nLocation: {job.location}\n\n{job.description}"
-    t = llm.tailor(client, settings.model, job_text, cv.outline(), settings.extra_skills)
+    t = llm.tailor(client, settings.model, job_text, cv.outline(), settings.extra_skills, settings.candidate_facts())
 
     changed, rejected = [], []
 
@@ -134,7 +134,9 @@ def report(o: Outcome, original: CV) -> str:
     if j.extra.get("snippet_only"):
         lines.append("- Note: only a snippet of the advert was available, so keywords may be incomplete.")
     if t.red_flags:
-        lines += ["", "## Red flags", *[f"- {f}" for f in t.red_flags]]
+        lines += ["", "## Deal-breakers", *[f"- {f}" for f in t.red_flags]]
+    if t.concerns:
+        lines += ["", "## Things a recruiter may question", *[f"- {f}" for f in t.concerns]]
     lines += ["", "## Keywords", "", "| Keyword | Must-have | In your CV | Evidence | In tailored CV |", "|---|---|---|---|---|"]
     final = CV(o.docx).full_text()
     for k in t.keywords:

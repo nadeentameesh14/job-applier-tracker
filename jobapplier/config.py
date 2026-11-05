@@ -48,6 +48,22 @@ class Settings:
     root: Path
     max_screen: int = 60
 
+    def candidate_facts(self) -> str:
+        """Facts the AI should take as true even though a CV doesn't state them."""
+        a, s = self.answers, self.search
+        lines = []
+        if a.get("right_to_work"):
+            lines.append(f"Right to work in {s.country}: {a['right_to_work']}")
+        if a.get("needs_sponsorship"):
+            lines.append(f"Needs visa sponsorship: {a['needs_sponsorship']}")
+        if s.locations:
+            lines.append(f"Based in / will work in: {', '.join(s.locations[:3])}" + (", or remote" if s.remote_ok else ""))
+        if a.get("notice_period"):
+            lines.append(f"Notice period: {a['notice_period']}")
+        if a.get("security_clearance"):
+            lines.append(f"Security clearance: {a['security_clearance']}")
+        return "\n".join(lines)
+
 
 def load_settings(path: str | Path = "settings.yaml") -> Settings:
     path = Path(path)

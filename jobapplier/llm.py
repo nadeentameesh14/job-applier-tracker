@@ -100,8 +100,11 @@ class Tailoring(BaseModel):
     keywords: list[Keyword]
     fit_score: int = Field(description="0-100: how well the candidate's real experience matches the role")
     fit_summary: str = Field(description="One or two sentences on why")
-    red_flags: list[str] = Field(description="Deal-breakers such as security clearance, sponsorship-only, non-UK location, "
-                                             "or a must-have the candidate clearly lacks")
+    red_flags: list[str] = Field(description="Only hard deal-breakers that rule the candidate out whatever their skills: e.g. security "
+                                             "clearance or citizenship they can't meet, a location outside their area, a contract/day-rate "
+                                             "role when they want permanent, or sponsorship-only. Use the candidate facts: don't list "
+                                             "anything they already meet. Skill gaps and experience level belong in concerns, not here")
+    concerns: list[str] = Field(default_factory=list, description="Gaps a recruiter may notice (missing skills, fewer years)")
     summary: str = Field(description="Rewritten summary paragraph (S1), about the same length as the original")
     bullet_edits: list[Edit] = Field(description="Rewritten experience bullets (B ids) - only those worth changing")
     bullet_order: list[str] = Field(description="Experience bullet ids, most relevant first")
@@ -114,18 +117,24 @@ class Tailoring(BaseModel):
 class Screen(BaseModel):
     fit_score: int = Field(description="0-100: how well the candidate's real experience matches the role")
     reason: str = Field(description="One sentence")
-    red_flags: list[str] = Field(description="Deal-breakers: security clearance, sponsorship-only, wrong country, "
-                                             "a must-have the candidate clearly lacks")
+    red_flags: list[str] = Field(description="Only hard deal-breakers that rule the candidate out whatever their skills: e.g. security "
+                                             "clearance or citizenship they can't meet, a location outside their area, a contract/day-rate "
+                                             "role when they want permanent, or sponsorship-only. Use the candidate facts: don't list "
+                                             "anything they already meet. Skill gaps and experience level belong in concerns, not here")
+    concerns: list[str] = Field(default_factory=list, description="Gaps a recruiter may notice (missing skills, fewer years)")
 
 
 SCREEN_SYSTEM = """You screen job adverts for one candidate. Score how well the candidate's real CV fits the role \
-(0-100), judging skills, experience level and domain. Be strict: 70+ means a recruiter would likely shortlist them."""
+(0-100), judging skills, experience level and domain. Be strict: 70+ means a recruiter would likely shortlist them. \
+Count all of the candidate's relevant professional experience, including adjacent technical roles, not only the \
+current job title. Candidate facts (right to work, location, notice period) are true even if the CV doesn't say them."""
 
 
-def screen(llm: LLM, model: str, job_text: str, cv_text: str) -> Screen:
+def screen(llm: LLM, model: str, job_text: str, cv_text: str, facts: str = "") -> Screen:
     """Cheap first pass so only promising jobs reach the (more expensive) tailoring step."""
     return llm.parse(model, SCREEN_SYSTEM,
-                     f"<job_advert>\n{job_text}\n</job_advert>\n\n<cv>\n{cv_text}\n</cv>", Screen, max_tokens=4000)
+                     f"<job_advert>\n{job_text}\n</job_advert>\n\n<cv>\n{cv_text}\n</cv>\n\n"
+                     f"<candidate_facts>\n{facts or 'none given'}\n</candidate_facts>", Screen, max_tokens=4000)
 
 
 SYSTEM = """You tailor a candidate's CV to one job advert so it passes applicant tracking systems (ATS) \
@@ -144,8 +153,9 @@ edited bullet or skills line must be no longer than the original (same length or
 - Only include bullets in bullet_edits that you actually changed."""
 
 
-def tailor(llm: LLM, model: str, job_text: str, cv_outline: str, extra_skills: list[str]) -> Tailoring:
+def tailor(llm: LLM, model: str, job_text: str, cv_outline: str, extra_skills: list[str], facts: str = "") -> Tailoring:
     prompt = (
+        f"<candidate_facts>\n{facts or 'none given'}\n</candidate_facts>\n\n"
         f"<job_advert>\n{job_text}\n</job_advert>\n\n"
         f"<cv>\n{cv_outline}\n</cv>\n\n"
         f"<extra_skills>{', '.join(extra_skills) or 'none'}</extra_skills>\n\n"
