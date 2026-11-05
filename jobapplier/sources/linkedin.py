@@ -28,7 +28,7 @@ DETAIL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{id}"
 # A normal browser string: LinkedIn serves its public pages to browsers, not to named bots.
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/130.0.0.0 Safari/537.36")
-PAUSE = 2.0  # seconds between requests
+PAUSE = 3.0  # seconds between requests
 
 
 class RateLimited(Exception):
@@ -36,9 +36,14 @@ class RateLimited(Exception):
 
 
 def _get(url: str, params: dict | None = None) -> str:
-    r = requests.get(url, params=params, headers={"User-Agent": UA, "Accept-Language": "en-GB,en;q=0.9"}, timeout=30)
-    if r.status_code in (429, 999):
-        raise RateLimited(f"LinkedIn rate limit (HTTP {r.status_code})")
+    for wait in (30, 90, None):  # back off twice when LinkedIn says "slow down", then give up
+        r = requests.get(url, params=params, headers={"User-Agent": UA, "Accept-Language": "en-GB,en;q=0.9"}, timeout=30)
+        if r.status_code not in (429, 999):
+            break
+        if wait is None:
+            raise RateLimited(f"LinkedIn rate limit (HTTP {r.status_code})")
+        log.warning("LinkedIn asked us to slow down; waiting %ds", wait)
+        time.sleep(wait)
     if r.status_code == 400 and "start" in (params or {}):
         return ""  # past the last page
     r.raise_for_status()
