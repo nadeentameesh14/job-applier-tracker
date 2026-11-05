@@ -11,6 +11,7 @@ VENV="$HOME_DIR/venv"
 PLIST="$HOME/Library/LaunchAgents/com.jobapplier.helper.plist"
 
 command -v python3 >/dev/null || { echo "Please install Python 3 from https://www.python.org/downloads/ and run this again."; exit 1; }
+python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))' || { echo "Your Python is too old. Install Python 3.12 from https://www.python.org/downloads/macos/ and run this again."; exit 1; }
 command -v git >/dev/null || { echo "Please install git (run: xcode-select --install) and run this again."; exit 1; }
 
 echo "1/4 Installing the helper's Python packages (in $VENV)..."
