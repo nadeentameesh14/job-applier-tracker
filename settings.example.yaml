@@ -98,6 +98,7 @@ answers:
   # gender: "Female"
   # ethnicity: "Prefer not to say"
   # nationality: ""
+  # religion: "Prefer not to say"
 
 apply:
   daily_cap_linkedin: 15

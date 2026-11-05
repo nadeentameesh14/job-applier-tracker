@@ -18,7 +18,10 @@ RULES: list[tuple[str, str]] = [
     (r"\b(security clearance|clearance)\b", "security_clearance"),
     (r"\b(position|role|job( title)?) (you are |you're |are you )?applying for\b", "job_title"),
     (r"\bgender\b|\bsex\b", "gender"),
-    (r"\b(ethnic\w*|community background|race|racial)\b", "ethnicity"),
+    (r"\b(religio\w*|belief|faith)\b", "religion"),
+    # Northern Ireland style "community background" (Protestant / Roman Catholic / Neither)
+    (r"\bcommunity background\b", "community_background"),
+    (r"\b(ethnic\w*|race|racial)\b", "ethnicity"),
     (r"\b(nationality|citizenship)\b", "nationality"),
     (r"\blinked ?in\b", "linkedin"),
     (r"\b(phone|mobile)\b", "phone"),
@@ -29,7 +32,7 @@ RULES: list[tuple[str, str]] = [
 ]
 
 # What to write when a free-text box asks for visa type or expiry: true, and doesn't volunteer the date.
-VISA_TEXT = "I have the right to work in the UK and don't need sponsorship. Happy to share details and documents at offer stage."
+VISA_TEXT = "I have the right to work in the UK and I am currently on my graduate visa. Happy to share details and documents at offer stage."
 
 
 def lookup(label: str, profile: dict, answers: dict) -> str | None:
@@ -39,6 +42,8 @@ def lookup(label: str, profile: dict, answers: dict) -> str | None:
     if known.get("linkedin") and not known["linkedin"].startswith("http"):
         known["linkedin"] = "https://www." + known["linkedin"].removeprefix("www.")
     known.setdefault("commute", "Yes")
+    if known.get("religion") and known.get("religion", "").lower() not in ("christian", "catholic", "protestant"):
+        known.setdefault("community_background", "Neither")
     for pat, key in RULES:
         if re.search(pat, low):
             if key == "__visa__":
@@ -52,6 +57,22 @@ def lookup(label: str, profile: dict, answers: dict) -> str | None:
 CLAUDE_PATHS = ["~/.local/bin/claude", "~/.claude/local/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]
 LEARNED = Path.home() / ".job-applier" / "learned_answers.json"
 last_problem: str = ""
+
+
+def clean_answer(raw: str, label: str = "") -> str:
+    """Keep only the final answer: the <answer> tag if present, no markdown, and just the number for
+    'how many years' questions."""
+    m = re.findall(r"<answer>(.*?)</answer>", raw, re.S | re.I)
+    ans = (m[-1] if m else raw).strip()
+    ans = ans.replace("**", "").strip()
+    if re.search(r"how many (years|months)", label, re.I):
+        nums = re.findall(r"\d+(?:\.\d+)?", ans)
+        if nums:
+            return nums[-1]
+    if re.search(r"answer:\s*", ans, re.I) and not m:
+        ans = re.split(r"answer:\s*", ans, flags=re.I)[-1].strip()
+    ans = re.sub(r"\bUNKNOWN\b", "0", ans) if "\n" in ans else ans
+    return ans
 
 
 def find_claude() -> str | None:
@@ -98,11 +119,12 @@ def ask_claude(label: str, options: list[str], cv_text: str, profile: dict, answ
         "CV shows no experience with a tool, say so honestly (e.g. 'No' or '0'). If options are given, answer with "
         "one option's exact text. Keep free-text answers short (one or two sentences).\n"
         "For 'how many years of experience with X' questions never answer UNKNOWN: add up the CV roles where X (or "
-        "clearly the same work) appears and give a whole number, or 0 if it doesn't appear at all.\n\n"
+        "clearly the same work) appears and give a whole number; if X is only in the skills list, count it from the current role; 0 if it doesn't appear at all.\n\n"
         f"<cv>\n{cv_text}\n</cv>\n<facts>\n{json.dumps({**profile, **answers}, default=str)}\n</facts>\n"
         f"<job>{job}</job>\n<question>{label}</question>\n"
         + (f"<options>{json.dumps(options)}</options>\n" if options else "")
-        + "Reply with the answer only."
+        + "Think silently. Reply with ONLY the final answer inside <answer></answer> tags, with no explanation. "
+          "For a question listing several tools, give one line per tool like 'SQL: 2', using 0 for none (never UNKNOWN)."
     )
     try:
         r = subprocess.run([exe, "-p", "--tools", "", "--model", "haiku"], input=prompt,
@@ -110,7 +132,7 @@ def ask_claude(label: str, options: list[str], cv_text: str, profile: dict, answ
     except Exception as e:
         last_problem = f"Claude Code didn't run: {e}"
         return None
-    ans = (r.stdout or "").strip()
+    ans = clean_answer(r.stdout or "", label)
     if r.returncode or not ans:
         last_problem = "Claude Code isn't signed in or hit a limit: " + ((r.stderr or r.stdout or "").strip()[-200:])
         return None
