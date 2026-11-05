@@ -60,6 +60,8 @@ class Settings:
             lines.append(f"Based in / will work in: {', '.join(s.locations[:3])}" + (", or remote" if s.remote_ok else ""))
         if a.get("notice_period"):
             lines.append(f"Notice period: {a['notice_period']}")
+        if self.extra_skills:
+            lines.append(f"Also has these skills (not written on the CV): {', '.join(self.extra_skills)}")
         if a.get("security_clearance"):
             lines.append(f"Security clearance: {a['security_clearance']}")
         return "\n".join(lines)
