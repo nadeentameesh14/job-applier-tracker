@@ -90,6 +90,8 @@ answers:
   right_to_work: "Yes"
   needs_sponsorship: "No"
   notice_period: "1 month"
+  # Tells the scorer what level you're aiming for, so a "Senior" title alone doesn't rule a job out.
+  experience: "About 4 years in tech. Happy with any role that asks for 2+ years of experience."
   # Used when the job has no posted range. With a posted range, the middle of it is used.
   expected_salary: 55000
 
