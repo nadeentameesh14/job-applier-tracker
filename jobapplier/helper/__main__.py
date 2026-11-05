@@ -289,7 +289,8 @@ def main(argv=None) -> None:
         os.execv(sys.executable, [sys.executable, "-m", "jobapplier.helper", *sys.argv[1:], "--no-restart"])
     settings = load_settings(repo / "settings.yaml")
     items = load_queue(repo)[: settings.apply.get("daily_cap_linkedin", 15)]
-    career = load_career(repo)[: settings.apply.get("daily_cap_auto", 15)]
+    career = load_career(repo)[: settings.apply.get("daily_cap_auto", 15)
+                               + settings.apply.get("daily_cap_manual", settings.apply.get("daily_cap_linkedin", 15))]
     if not items and not career:
         print("Nothing to do today.")
         return

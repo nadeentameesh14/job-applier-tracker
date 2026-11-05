@@ -70,6 +70,11 @@ matching:
   # Jobs scoring below this (0-100) against your CV are skipped.
   min_fit_score: 70
   # At most this many jobs are scored per run (best matches first), to keep the run under an hour.
+  # Your own rules for judging fit, in plain English. Claude follows them when scoring and checking jobs.
+  rules: []
+  #  - "Roles asking for up to 5 years of experience are still worth applying to."
+  # Titles you want to apply to whatever the score (a hard deal-breaker like clearance still stops them).
+  always_apply_titles: []
   max_screen_per_run: 60
   # How to reach Claude:
   #   claude-code: uses your Claude subscription via Claude Code (secret CLAUDE_CODE_OAUTH_TOKEN). No API bill.
@@ -103,6 +108,8 @@ answers:
 apply:
   daily_cap_linkedin: 15
   daily_cap_auto: 15
+  # LinkedIn jobs that apply on a company site (the laptop helper finds the link). Defaults to daily_cap_linkedin.
+  # daily_cap_manual: 15
 
 # Morning email with the day's numbers, queues and anything that needs you. Uses the GMAIL_ADDRESS and
 # GMAIL_APP_PASSWORD secrets to send. "to" defaults to profile.email.

@@ -127,7 +127,8 @@ class Screen(BaseModel):
 SCREEN_SYSTEM = """You screen job adverts for one candidate. Score how well the candidate's real CV fits the role \
 (0-100), judging skills, experience level and domain. Be strict: 70+ means a recruiter would likely shortlist them. \
 Count all of the candidate's relevant professional experience, including adjacent technical roles, not only the \
-current job title. Candidate facts (right to work, location, notice period) are true even if the CV doesn't say them."""
+current job title. Candidate facts (right to work, location, notice period) are true even if the CV doesn't say them. \
+If the facts include the candidate's own rules for judging fit, follow them."""
 
 
 def screen(llm: LLM, model: str, job_text: str, cv_text: str, facts: str = "") -> Screen:

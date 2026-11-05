@@ -147,7 +147,7 @@ def cmd_run(args, settings):
     STATS["started_at"] = datetime.now(timezone.utc).isoformat(timespec="minutes")
     kept = cmd_find(args, settings)
     caps = {"linkedin": settings.apply.get("daily_cap_linkedin", 15), "auto": settings.apply.get("daily_cap_auto", 15),
-            "manual": settings.apply.get("daily_cap_linkedin", 15)}
+            "manual": settings.apply.get("daily_cap_manual", settings.apply.get("daily_cap_linkedin", 15))}
     if getattr(args, "test", False):
         settings.max_screen = 15
         caps = {k: min(v, 1) for k, v in caps.items()}
@@ -184,7 +184,7 @@ def cmd_run(args, settings):
         except Exception as e:
             print(f"  ! could not screen {job.title} at {job.company}: {e}")
             continue
-        passes = sc.fit_score >= settings.min_fit_score and not sc.red_flags
+        passes = (sc.fit_score >= settings.min_fit_score or settings.always_apply(job.title)) and not sc.red_flags
         over_cap = passes and done[m] >= caps[m]
         STATS["screened"] += 1
         STATS["suited"] += int(passes)
@@ -208,7 +208,7 @@ def cmd_run(args, settings):
             print(f"  ! could not tailor {job.title} at {job.company}: {e}")
             continue
         STATS["tailored"] += 1
-        if out.fit_score >= settings.min_fit_score and not out.analysis.red_flags:
+        if (out.fit_score >= settings.min_fit_score or settings.always_apply(job.title)) and not out.analysis.red_flags:
             args.job = job.id
             cmd_queue(args, settings)
             done[m] += 1

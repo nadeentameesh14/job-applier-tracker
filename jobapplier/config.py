@@ -48,6 +48,8 @@ class Settings:
     root: Path
     max_screen: int = 60
     digest: dict[str, Any] = field(default_factory=dict)
+    rules: list[str] = field(default_factory=list)
+    always_apply_titles: list[str] = field(default_factory=list)
     sheet: dict[str, Any] = field(default_factory=dict)
 
     def candidate_facts(self) -> str:
@@ -68,7 +70,17 @@ class Settings:
             lines.append(f"Also has these skills (not written on the CV): {', '.join(self.extra_skills)}")
         if a.get("security_clearance"):
             lines.append(f"Security clearance: {a['security_clearance']}")
+        if a.get("background"):
+            lines.append(f"More background (true, not on the CV): {a['background']}")
+        if self.rules:
+            lines.append("The candidate's own rules for judging fit (follow these; they override any general strictness):")
+            lines += [f"- {r}" for r in self.rules]
         return "\n".join(lines)
+
+    def always_apply(self, title: str) -> bool:
+        """Titles the candidate wants to apply to whatever the fit score (unless there's a hard deal-breaker)."""
+        t = title.lower()
+        return any(w.lower() in t for w in self.always_apply_titles)
 
 
 def load_settings(path: str | Path = "settings.yaml") -> Settings:
@@ -117,5 +129,7 @@ def load_settings(path: str | Path = "settings.yaml") -> Settings:
         root=root,
         max_screen=int(m.get("max_screen_per_run", 60)),
         digest=dict(raw.get("digest") or {}),
+        rules=list(m.get("rules") or []),
+        always_apply_titles=list(m.get("always_apply_titles") or []),
         sheet=dict(raw.get("sheet") or {}),
     )
