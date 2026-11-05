@@ -179,7 +179,10 @@ def main(argv=None) -> None:
     ap.add_argument("--ask", action="append", default=[], metavar="WORDS",
                     help="always stop and ask you at questions containing these words (can repeat)")
     ap.add_argument("--login", action="store_true", help="open the browser to sign in to LinkedIn, then exit")
-    args = ap.parse_args(argv)
+    # unknown options are allowed until after the update below, so a newer option works on first use
+    args, unknown_opts = ap.parse_known_args(argv)
+    if unknown_opts and "--no-restart" in sys.argv:
+        ap.error("unrecognized arguments: " + " ".join(unknown_opts))
     repo = Path(args.repo).resolve()
     global TEST_MODE
     TEST_MODE = args.test
