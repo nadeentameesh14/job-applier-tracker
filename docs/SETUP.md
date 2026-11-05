@@ -67,6 +67,11 @@ Prefer to pay per use instead? Set `matching.provider: anthropic`, use full mode
 
 Add each one in your repo under **Settings → Secrets and variables → Actions → New repository secret**, using exactly the names above.
 
+**LinkedIn (no key needed for the public search).** The bot searches LinkedIn's public job pages without logging in, so your account is never used. For extra coverage it can also read your LinkedIn job-alert emails:
+1. On LinkedIn, search for a role and location, set **Date posted**, and turn on **Set alert** (daily, by email). Do this for each role you want.
+2. Turn on 2-Step Verification for your Google account, then create an app password at [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) (name it "job bot").
+3. Add the secrets `GMAIL_ADDRESS` (your Gmail address) and `GMAIL_APP_PASSWORD` (the 16-letter app password). The bot only reads emails from LinkedIn job alerts, read-only.
+
 ## 6. Run it
 
 1. Go to the **Actions** tab. If asked, click **I understand my workflows, go ahead and enable them**.

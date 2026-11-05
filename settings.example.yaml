@@ -56,7 +56,13 @@ search:
   # LinkedIn's public job search (no login: your LinkedIn account is never used).
   # Searches your first location (within distance_miles) and, if remote_ok, remote jobs in your country.
   # Easy Apply jobs go to your approval queue; jobs that apply on a company site are handled like any other.
-  linkedin: {enabled: true, pages_per_role: 2, distance_miles: 25, easy_apply_only: false}
+  # alert_emails: also read your LinkedIn job-alert emails from Gmail (secrets GMAIL_ADDRESS, GMAIL_APP_PASSWORD).
+  linkedin:
+    enabled: true
+    pages_per_role: 2
+    distance_miles: 25
+    easy_apply_only: false
+    alert_emails: {enabled: true, days: 3, max_jobs: 60}
   adzuna: {enabled: true, results_per_role: 50}
   reed: {enabled: true, results_per_role: 50}
 

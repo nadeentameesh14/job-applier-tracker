@@ -51,3 +51,16 @@ def test_detail_offsite_and_easy():
 
 def test_job_id():
     assert job_id_from("https://uk.linkedin.com/jobs/view/data-engineer-at-acme-4012345678?trk=x") == "4012345678"
+
+
+def test_alert_email_ids():
+    from jobapplier.sources.linkedin_alerts import job_ids
+    body = ('<a href="https://www.linkedin.com/comm/jobs/view/4012345678/?trackingId=x">Data Engineer</a>'
+            '<a href="https://www.linkedin.com/comm/jobs/view/4012345678/?refId=y">again</a>'
+            'https://www.linkedin.com/jobs/view/senior-ai-engineer-at-beta-4099999999?trk=z')
+    assert job_ids(body) == ["4012345678", "4099999999"]
+
+
+def test_ago():
+    from jobapplier.sources.linkedin import ago_to_date
+    assert ago_to_date("2 weeks ago") is not None and ago_to_date("Reposted recently") is None

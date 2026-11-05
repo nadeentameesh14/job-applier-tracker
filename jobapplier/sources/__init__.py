@@ -6,7 +6,7 @@ import os
 
 from ..config import Settings
 from ..models import Job
-from . import adzuna, ashby, greenhouse, lever, linkedin, reed
+from . import adzuna, ashby, greenhouse, lever, linkedin, linkedin_alerts, reed
 
 log = logging.getLogger(__name__)
 
@@ -50,4 +50,16 @@ def fetch_all(settings: Settings) -> tuple[list[Job], list[str]]:
             jobs += found
         except Exception as e:
             problems.append(f"LinkedIn: {e}")
+    alerts = s.linkedin.get("alert_emails", {}) or {}
+    if alerts.get("enabled"):
+        addr, pw = os.environ.get("GMAIL_ADDRESS"), os.environ.get("GMAIL_APP_PASSWORD")
+        if addr and pw:
+            try:
+                found = linkedin_alerts.search(addr, pw.replace(" ", ""), alerts)
+                log.info("LinkedIn alert emails: %d jobs", len(found))
+                jobs += found
+            except Exception as e:
+                problems.append(f"LinkedIn alert emails: {e}")
+        else:
+            problems.append("LinkedIn alert emails skipped: GMAIL_ADDRESS / GMAIL_APP_PASSWORD not set")
     return jobs, problems

@@ -12,7 +12,7 @@ You don't need to write any code to use it. You copy the template, edit one sett
  find ──► filter ──► analyse + tailor ──► one-page check ──► queue ──► track
 ```
 
-1. **Find.** Searches company job boards directly (Greenhouse, Lever, Ashby), plus the Reed (free) and Adzuna (paid) UK job APIs if you add keys.
+1. **Find.** Searches LinkedIn's public job listings (no login, so your account is never at risk) and your LinkedIn job-alert emails, company job boards directly (Greenhouse, Lever, Ashby), plus the Reed (free) and Adzuna (paid) UK job APIs if you add keys.
 2. **Filter.** Keeps jobs that match your target titles, locations (or remote), recency (e.g. last 21 days) and salary floor, and skips companies you exclude. Duplicates across sources are merged. Your first location is ranked first.
 3. **Screen and analyse.** A light Claude model scores every matching advert first, so only promising ones go further. Then a stronger model reads each one, pulls out its keywords, marks which ones are must-haves, checks each against your CV (already there, there in other words, or missing), and scores the fit from 0 to 100.
 4. **Tailor.** Claude rewrites your summary, the most relevant bullets and your skills lines to use the advert's wording where it's true, and puts the most relevant bullets first. Your Word file is edited in place, so fonts and layout don't change.

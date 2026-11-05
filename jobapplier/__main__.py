@@ -48,6 +48,15 @@ def cmd_find(args, settings) -> list[Job]:
         posted = j.posted_at.date().isoformat() if j.posted_at else "?"
         sal = f"£{int(j.salary_max):,}" if j.salary_max else ""
         print(f"  {j.id}  {posted}  {j.company[:22]:22}  {j.title[:48]:48}  {j.location[:30]:30} {sal:>9}  [{j.apply_method}]")
+    n = getattr(args, "details", 0)
+    if n:
+        from .tailor import ensure_full_description
+        print(f"\nOpening the top {n} adverts to see how each one is applied to:")
+        for j in kept[:n]:
+            j = ensure_full_description(j)
+            how = {True: "LinkedIn Easy Apply", False: "company site"}.get(j.extra.get("easy_apply"), "not shown")
+            print(f"  {j.id}  {j.title[:40]:40}  {how:20}  [{j.apply_method}]  {len(j.description):>6} chars  "
+                  f"{j.apply_url if j.apply_url != j.url else ''}")
     return kept
 
 
@@ -156,6 +165,7 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     f = sub.add_parser("find", help="search all sources and list matching jobs")
     f.add_argument("--limit", type=int, default=30)
+    f.add_argument("--details", type=int, default=5, help="open this many top adverts to check how they're applied to")
     t = sub.add_parser("tailor", help="tailor your CV for one job")
     t.add_argument("--job", help="job id from `find`")
     t.add_argument("--jd-file", help="or a text file with a job description")

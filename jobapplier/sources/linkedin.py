@@ -102,15 +102,49 @@ def parse_detail(html: str) -> dict:
     crit = {h.get_text(" ", strip=True): v.get_text(" ", strip=True)
             for h, v in ((li.select_one("h3"), li.select_one("span"))
                          for li in soup.select("li.description__job-criteria-item")) if h and v}
+    for key, sel in (("title", ".top-card-layout__title, h2"), ("company", ".topcard__org-name-link, .topcard__flavor a"),
+                     ("location", ".topcard__flavor--bullet"), ("posted", ".posted-time-ago__text")):
+        el = soup.select_one(sel)
+        out[key] = el.get_text(" ", strip=True) if el else ""
     out["seniority"] = crit.get("Seniority level", "")
     out["employment_type"] = crit.get("Employment type", "")
     return out
 
 
+def ago_to_date(text: str):
+    """'3 days ago' / '2 weeks ago' / '5 hours ago' -> an aware datetime (None if not understood)."""
+    from datetime import datetime, timedelta, timezone
+    m = re.search(r"(\d+)\s+(minute|hour|day|week|month)s?\s+ago", text or "", re.I)
+    if not m:
+        return None
+    n, unit = int(m.group(1)), m.group(2).lower()
+    days = {"minute": 0, "hour": 0, "day": n, "week": 7 * n, "month": 30 * n}[unit]
+    return datetime.now(timezone.utc) - timedelta(days=days)
+
+
+def job_from_id(jid: str) -> Job | None:
+    """Build a job from its LinkedIn id alone (used for job-alert emails)."""
+    d = parse_detail(_get(DETAIL.format(id=jid)))
+    if not (d["title"] and d["company"]):
+        return None
+    url = f"https://www.linkedin.com/jobs/view/{jid}/"
+    job = Job(source="linkedin", title=d["title"], company=d["company"], location=d["location"], url=url,
+              apply_url=url, description=d["description"][:20000], posted_at=ago_to_date(d["posted"]),
+              remote="remote" in d["location"].lower(),
+              extra={"snippet_only": False, "linkedin_id": jid, "via": "alert email"})
+    lo, hi = parse_salary(d["description"])
+    job.salary_min, job.salary_max = lo, hi
+    if d["easy_apply"] is not None:
+        job.extra["easy_apply"] = d["easy_apply"]
+    if d["apply_url"] and "linkedin.com" not in d["apply_url"]:
+        job.apply_url = d["apply_url"]
+    return job
+
+
 def full_details(job: Job) -> Job:
     """Fetch the job page: full description, Easy Apply or not, and the company's own apply link."""
     jid = job.extra.get("linkedin_id")
-    if not jid:
+    if not jid or not job.extra.get("snippet_only"):
         return job
     d = parse_detail(_get(DETAIL.format(id=jid)))
     if len(d["description"]) > len(job.description):
