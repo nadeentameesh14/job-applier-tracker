@@ -21,6 +21,11 @@ function doPost(e) {
     const tab = body.tabs[name];
     writeTab(ss, name, tab.header, tab.rows, tab.key || null);
   }
+  // show the tracker first, and remove the blank starting tab
+  const tr = ss.getSheetByName('Tracker');
+  if (tr) { ss.setActiveSheet(tr); ss.moveActiveSheet(1); }
+  const blank = ss.getSheetByName('Sheet1');
+  if (blank && blank.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(blank);
   return out({ ok: true, url: ss.getUrl() });
 }
 
