@@ -45,24 +45,49 @@ def find_modal(page, timeout: float = 20):
 
 
 def dump_debug(page, name: str) -> str:
-    """Save a screenshot and the page's HTML (including shadow roots) so the problem can be fixed."""
+    """Save a screenshot, the page's HTML (including shadow roots and frames) and a few counts, so a
+    problem with LinkedIn's page can be fixed. Never fails: errors are written into the file."""
+    import json as _json
     DEBUG_DIR.mkdir(parents=True, exist_ok=True)
-    base = DEBUG_DIR / re.sub(r"[^A-Za-z0-9_-]+", "_", name)[:60]
+    base = str(DEBUG_DIR / re.sub(r"[^A-Za-z0-9_-]+", "_", name)[:60])
+    out: list[str] = [f"URL: {page.url}"]
     try:
-        page.screenshot(path=str(base) + ".png", full_page=False)
-    except Exception:
-        pass
+        page.screenshot(path=base + ".png", full_page=False)
+    except Exception as e:
+        out.append(f"screenshot failed: {e}")
+    for fr in page.frames:
+        try:
+            info = {"frame": fr.url[:200], "dialogs": fr.locator(MODAL).count(),
+                    "inputs": fr.locator("input, select, textarea").count(),
+                    "next_buttons": fr.get_by_role("button", name=re.compile("next|review|submit", re.I)).count(),
+                    "apply_to_text": fr.get_by_text(re.compile(r"^Apply to ", re.I)).count()}
+            out.append(_json.dumps(info))
+        except Exception as e:
+            out.append(f"frame {fr.url[:100]}: {e}")
     try:
-        html = page.evaluate("""() => {
-            const ser = n => { let h = n.outerHTML || '';
-                n.querySelectorAll('*').forEach(e => { if (e.shadowRoot) h += '\n<!--SHADOW of ' + e.tagName + '-->' + ser(e.shadowRoot); });
+        html = page.evaluate(r"""() => {
+            const ser = n => { let h = n.outerHTML || n.innerHTML || '';
+                n.querySelectorAll('*').forEach(e => { if (e.shadowRoot) h += '\n<!--SHADOW of ' + e.tagName + '-->\n' + ser(e.shadowRoot); });
                 return h; };
-            return location.href + '\n' + ser(document.documentElement);
+            return ser(document.documentElement);
         }""")
-        Path(str(base) + ".html").write_text(html)
-    except Exception:
-        pass
-    return str(base) + ".html"
+        out.append(html)
+    except Exception as e:
+        out.append(f"page html failed: {e}")
+        try:
+            out.append(page.content())
+        except Exception as e2:
+            out.append(f"page content failed: {e2}")
+    try:  # the browser's own view of the page, which also sees closed shadow roots
+        cdp = page.context.new_cdp_session(page)
+        doc = cdp.send("DOM.getDocument", {"depth": -1, "pierce": True})
+        Path(base + "_dom.json").write_text(_json.dumps(doc))
+        ax = cdp.send("Accessibility.getFullAXTree")
+        Path(base + "_ax.json").write_text(_json.dumps(ax))
+    except Exception as e:
+        out.append(f"cdp dump failed: {e}")
+    Path(base + ".html").write_text("\n".join(out), encoding="utf-8")
+    return base + ".html"
 
 
 @dataclass

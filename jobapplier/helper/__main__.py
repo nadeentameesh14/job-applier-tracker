@@ -111,9 +111,14 @@ def browser(pw):
     # no fixed viewport: the page fills the real window, which opens maximised
     kw = dict(user_data_dir=str(PROFILE_DIR), headless=False, no_viewport=True, args=["--start-maximized", "--window-position=0,0", "--window-size=1440,900"])
     try:
-        return pw.chromium.launch_persistent_context(channel="chrome", **kw)  # your installed Chrome
+        ctx = pw.chromium.launch_persistent_context(channel="chrome", **kw)  # your installed Chrome
     except Exception:
-        return pw.chromium.launch_persistent_context(**kw)
+        ctx = pw.chromium.launch_persistent_context(**kw)
+    # LinkedIn may draw the Easy Apply window inside a "closed" shadow root, which automation can't
+    # see into. Make every shadow root open so the helper can read the form like you can.
+    ctx.add_init_script("""(() => { const o = Element.prototype.attachShadow;
+        Element.prototype.attachShadow = function (init) { return o.call(this, Object.assign({}, init, {mode: 'open'})); }; })();""")
+    return ctx
 
 
 def ensure_signed_in(page) -> bool:
@@ -158,6 +163,7 @@ def main(argv=None) -> None:
     ap.add_argument("--repo", default=".", help="your private repo folder")
     ap.add_argument("--test", action="store_true", help="fill in everything but don't press Submit")
     ap.add_argument("--no-restart", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--diagnose", metavar="JOB_URL", help="open one job, click Easy Apply and save what the page looks like")
     ap.add_argument("--login", action="store_true", help="open the browser to sign in to LinkedIn, then exit")
     args = ap.parse_args(argv)
     repo = Path(args.repo).resolve()
@@ -165,6 +171,21 @@ def main(argv=None) -> None:
     TEST_MODE = args.test
 
     from playwright.sync_api import sync_playwright
+
+    if args.diagnose:
+        from .easyapply import dump_debug, find_modal
+        with sync_playwright() as pw:
+            ctx = browser(pw)
+            page = ctx.pages[0] if ctx.pages else ctx.new_page()
+            page.goto(args.diagnose, wait_until="domcontentloaded")
+            page.wait_for_timeout(4000)
+            dump_debug(page, "diag_before")
+            page.locator("button.jobs-apply-button, button:has-text('Easy Apply'), a:has-text('Easy Apply')").first.click()
+            page.wait_for_timeout(6000)
+            print("Found the window:", find_modal(page, timeout=5) is not None)
+            print("Saved:", dump_debug(page, "diag_after"))
+            ctx.close()
+        return
 
     if args.login:
         with sync_playwright() as pw:
