@@ -157,6 +157,7 @@ def main(argv=None) -> None:
     ap = argparse.ArgumentParser(prog="jobapplier.helper")
     ap.add_argument("--repo", default=".", help="your private repo folder")
     ap.add_argument("--test", action="store_true", help="fill in everything but don't press Submit")
+    ap.add_argument("--no-restart", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--login", action="store_true", help="open the browser to sign in to LinkedIn, then exit")
     args = ap.parse_args(argv)
     repo = Path(args.repo).resolve()
@@ -174,9 +175,14 @@ def main(argv=None) -> None:
         return
 
     print("Getting today's queue from GitHub...")
+    before = git(repo, "rev-parse", "HEAD").stdout.strip()
     pulled = git(repo, "pull", "--rebase", "--autostash")
     if pulled.returncode:
         print("  (couldn't pull: " + (pulled.stderr.strip()[-200:] or "unknown") + ")")
+    elif git(repo, "diff", "--quiet", before, "HEAD", "--", "jobapplier").returncode and "--no-restart" not in sys.argv:
+        print("  (the helper itself was updated; restarting with the new version)")
+        import os
+        os.execv(sys.executable, [sys.executable, "-m", "jobapplier.helper", *sys.argv[1:], "--no-restart"])
     settings = load_settings(repo / "settings.yaml")
     items = load_queue(repo)
     cap = settings.apply.get("daily_cap_linkedin", 15)
