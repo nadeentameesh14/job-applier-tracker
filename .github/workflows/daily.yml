@@ -89,11 +89,12 @@ jobs:
           git add -f data/ || true
           if ! git diff --cached --quiet; then
             git commit -m "Daily run $(date -u +%F)"
+            git pull --rebase -X theirs origin "${GITHUB_REF_NAME}" || true
             git push
           fi
 
       - name: Keep results for download
-        if: steps.check.outputs.ok == 'true'
+        if: always() && steps.check.outputs.ok == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: results-${{ github.run_number }}
