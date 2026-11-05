@@ -221,6 +221,10 @@ def main(argv=None) -> None:
             mark(repo, i, T.SKIPPED, "Not approved")
 
     from .easyapply import apply
+    from .answers import find_claude
+    if not find_claude():
+        print("Note: Claude Code isn't installed here, so I can only answer questions covered by your settings.\n"
+              "  To fix: run  bash helper/install_mac.sh  again (it installs Claude Code and asks you to sign in).")
 
     cv_text = CV(settings.cv_path).full_text()
     base = {"profile": settings.profile, "cv_text": cv_text}

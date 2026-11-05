@@ -273,10 +273,22 @@ def apply(page, job_url: str, cv_pdf: Path, ctx: dict, submit: bool = True) -> R
         if not nxt.count():
             f = dump_debug(page, f"{job_url.rstrip('/').split('/')[-1]}_nonext{step}")
             return Result("needs_you", f"Couldn't find the Next button (details saved to {f})")
+        try:
+            before = modal.inner_text()
+        except Exception:
+            before = ""
         nxt.click()
         pause(1.5, 3)
         errs = modal.locator(".artdeco-inline-feedback--error, [data-test-form-element-error-messages], [id^=error-message], [role=alert]")
-        if any(x.is_visible() and x.inner_text().strip() for x in errs.all()):
-            missing = ", ".join(u for u in unknown if u) or "a required question"
-            return Result("needs_you", f"Couldn't answer: {missing}")
+        stuck = any(x.is_visible() and x.inner_text().strip() for x in errs.all())
+        if not stuck:  # LinkedIn's newer form shows errors differently: if the page didn't change, we're stuck
+            try:
+                after = find_modal(page, timeout=5)
+                stuck = after is not None and after.inner_text() == before
+            except Exception:
+                pass
+        if stuck:
+            missing = "; ".join(u for u in unknown if u) or "a required question"
+            why = f" ({A.last_problem})" if A.last_problem else ""
+            return Result("needs_you", f"Couldn't answer: {missing}{why}")
     return Result("needs_you", "Too many steps; left open for you")

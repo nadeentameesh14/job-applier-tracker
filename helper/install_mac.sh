@@ -14,20 +14,20 @@ command -v python3 >/dev/null || { echo "Please install Python 3 from https://ww
 python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))' || { echo "Your Python is too old. Install Python 3.12 from https://www.python.org/downloads/macos/ and run this again."; exit 1; }
 command -v git >/dev/null || { echo "Please install git (run: xcode-select --install) and run this again."; exit 1; }
 
-echo "1/4 Installing the helper's Python packages (in $VENV)..."
+echo "1/5 Installing the helper's Python packages (in $VENV)..."
 mkdir -p "$HOME_DIR"
 python3 -m venv "$VENV"
 "$VENV/bin/pip" install -q --upgrade pip
 "$VENV/bin/pip" install -q -r "$REPO/requirements.txt" playwright
 
-echo "2/4 Getting a browser for it..."
+echo "2/5 Getting a browser for it..."
 if [ -d "/Applications/Google Chrome.app" ]; then
   echo "   Using your Google Chrome."
 else
   "$VENV/bin/python" -m playwright install chromium
 fi
 
-echo "3/4 Making it start when you log in, and every day at 9am..."
+echo "3/5 Making it start when you log in, and every day at 9am..."
 cat > "$HOME_DIR/run.sh" <<EOF
 #!/bin/bash
 cd "$REPO" && "$VENV/bin/python" -m jobapplier.helper --repo "$REPO" >> "$HOME_DIR/helper.log" 2>&1
@@ -48,7 +48,21 @@ EOF
 launchctl unload "$PLIST" 2>/dev/null || true
 launchctl load "$PLIST"
 
-echo "4/4 Opening a browser window: sign in to LinkedIn there once, then close it."
+echo "4/5 Setting up Claude Code (it answers form questions from your CV, on your Claude subscription)..."
+export PATH="$HOME/.local/bin:$PATH"
+if ! command -v claude >/dev/null; then
+  curl -fsSL https://claude.ai/install.sh | bash
+fi
+if claude -p "Reply with the word OK" --model haiku >/dev/null 2>&1; then
+  echo "   Claude Code is signed in."
+else
+  echo "   Claude Code needs you to sign in once. It will open now: sign in with your Claude account in the"
+  echo "   browser, then type /exit and press Enter to come back here."
+  read -r -p "   Press Enter to start..." _
+  claude || true
+fi
+
+echo "5/5 Opening a browser window: sign in to LinkedIn there once, then close it."
 cd "$REPO" && "$VENV/bin/python" -m jobapplier.helper --repo "$REPO" --login
 
 echo
