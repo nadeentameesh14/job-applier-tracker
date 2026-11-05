@@ -45,7 +45,6 @@ search:
     - {name: Deliveroo, ats: greenhouse, token: deliveroo}
     - {name: GoCardless, ats: greenhouse, token: gocardless}
     - {name: Tide, ats: greenhouse, token: tide}
-    - {name: Wayve, ats: greenhouse, token: wayve}
     - {name: Anthropic, ats: greenhouse, token: anthropic}
     - {name: Palantir, ats: lever, token: palantir}
     - {name: ElevenLabs, ats: ashby, token: elevenlabs}
