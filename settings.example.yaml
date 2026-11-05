@@ -59,7 +59,9 @@ search:
 matching:
   # Jobs scoring below this (0-100) against your CV are skipped.
   min_fit_score: 70
-  # Claude model used for job analysis and CV tailoring.
+  # Cheap model that scores every matching job first (fractions of a penny each).
+  screen_model: "claude-haiku-5-5"
+  # Stronger model that analyses keywords and tailors the CV, only for jobs that pass screening.
   model: "claude-opus-5-5"
 
 # Skills you really have that aren't written on your CV. The tailoring step may

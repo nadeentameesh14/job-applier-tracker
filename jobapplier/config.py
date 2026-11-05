@@ -39,6 +39,7 @@ class Settings:
     search: Search
     min_fit_score: int
     model: str
+    screen_model: str
     extra_skills: list[str]
     answers: dict[str, Any]
     apply: dict[str, int]
@@ -82,6 +83,7 @@ def load_settings(path: str | Path = "settings.yaml") -> Settings:
         search=search,
         min_fit_score=int(m.get("min_fit_score", 70)),
         model=str(m.get("model", "claude-opus-5-5")),
+        screen_model=str(m.get("screen_model", "claude-haiku-5-5")),
         extra_skills=list(raw.get("extra_skills") or []),
         answers=dict(raw.get("answers") or {}),
         apply={k: int(v) for k, v in (raw.get("apply") or {}).items()},

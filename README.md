@@ -14,7 +14,7 @@ You don't need to write any code to use it. You copy the template, edit one sett
 
 1. **Find.** Searches company job boards directly (Greenhouse, Lever, Ashby), plus the Adzuna and Reed UK job APIs if you add free keys.
 2. **Filter.** Keeps jobs that match your target titles, locations (or remote), recency (e.g. last 21 days) and salary floor, and skips companies you exclude. Duplicates across sources are merged. Your first location is ranked first.
-3. **Analyse.** Claude reads each advert, pulls out its keywords, marks which ones are must-haves, checks each against your CV (already there, there in other words, or missing), and scores the fit from 0 to 100.
+3. **Screen and analyse.** A cheap Claude model scores every matching advert first, so only promising ones go further. Then a stronger model reads each one, pulls out its keywords, marks which ones are must-haves, checks each against your CV (already there, there in other words, or missing), and scores the fit from 0 to 100.
 4. **Tailor.** Claude rewrites your summary, the most relevant bullets and your skills lines to use the advert's wording where it's true, and puts the most relevant bullets first. Your Word file is edited in place, so fonts and layout don't change.
 5. **Truth check.** Every edit is checked against your original CV, plus any extra skills you list. An edit that mentions a tool or number you don't have is thrown away and logged.
 6. **One page.** The CV is turned into a PDF and the pages counted. If it runs over, the least relevant items for that job are removed until it fits.
@@ -69,7 +69,7 @@ Tracker statuses: Tailored → Awaiting approval (LinkedIn or manual) / Ready to
 
 - GitHub Actions: free for a daily run on a private repo (well within the free minutes).
 - Adzuna and Reed: free API keys.
-- Claude API: you pay per job tailored. Each job is one request with the advert and your CV, so expect roughly 5p to 15p per job on the default model. You can change `matching.model` in settings.
+- Claude API: screening costs a fraction of a penny per job. Tailoring a job that passes is roughly 5p to 15p on the default model. You can change `matching.screen_model` and `matching.model` in settings.
 
 ## Privacy
 

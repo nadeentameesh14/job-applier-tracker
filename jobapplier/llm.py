@@ -38,6 +38,31 @@ class Tailoring(BaseModel):
                                               "used only if the CV runs over one page")
 
 
+class Screen(BaseModel):
+    fit_score: int = Field(description="0-100: how well the candidate's real experience matches the role")
+    reason: str = Field(description="One sentence")
+    red_flags: list[str] = Field(description="Deal-breakers: security clearance, sponsorship-only, wrong country, "
+                                             "a must-have the candidate clearly lacks")
+
+
+SCREEN_SYSTEM = """You screen job adverts for one candidate. Score how well the candidate's real CV fits the role \
+(0-100), judging skills, experience level and domain. Be strict: 70+ means a recruiter would likely shortlist them."""
+
+
+def screen(client: anthropic.Anthropic, model: str, job_text: str, cv_text: str) -> Screen:
+    """Cheap first pass so only promising jobs reach the (more expensive) tailoring step."""
+    resp = client.messages.parse(
+        model=model,
+        max_tokens=4000,
+        system=SCREEN_SYSTEM,
+        messages=[{"role": "user", "content": f"<job_advert>\n{job_text}\n</job_advert>\n\n<cv>\n{cv_text}\n</cv>"}],
+        output_format=Screen,
+    )
+    if resp.stop_reason == "refusal" or resp.parsed_output is None:
+        raise RuntimeError(f"screening failed (stop_reason={resp.stop_reason})")
+    return resp.parsed_output
+
+
 SYSTEM = """You tailor a candidate's CV to one job advert so it passes applicant tracking systems (ATS) \
 while staying 100% truthful. You are editing the candidate's real CV; a recruiter will check it at interview.
 

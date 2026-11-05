@@ -109,9 +109,30 @@ def cmd_run(args, settings):
     caps = {"linkedin": settings.apply.get("daily_cap_linkedin", 15), "auto": settings.apply.get("daily_cap_auto", 15),
             "manual": settings.apply.get("daily_cap_linkedin", 15)}
     done = {"linkedin": 0, "auto": 0, "manual": 0}
+    import anthropic
+
+    from .cv import CV
+    from .llm import screen
+    from .tailor import ensure_full_description
+
+    client = anthropic.Anthropic()
+    cv_text = CV(settings.cv_path).full_text()
     for job in kept:
         m = job.apply_method
         if done[m] >= caps[m]:
+            continue
+        try:
+            job = ensure_full_description(job)
+            sc = screen(client, settings.screen_model,
+                        f"Title: {job.title}\nCompany: {job.company}\nLocation: {job.location}\n\n{job.description}", cv_text)
+        except Exception as e:
+            print(f"  ! could not screen {job.title} at {job.company}: {e}")
+            continue
+        if sc.fit_score < settings.min_fit_score or sc.red_flags:
+            trk = T.Tracker(DATA / "tracker.csv")  # reload: tailor/queue steps write to it too
+            trk.upsert(job, status=T.SKIPPED, fit_score=sc.fit_score, notes="; ".join([sc.reason, *sc.red_flags]))
+            trk.save()
+            print(f"  - skipped {job.title} at {job.company}: score {sc.fit_score}. {sc.reason}")
             continue
         try:
             out = cmd_tailor(args, settings, job)
