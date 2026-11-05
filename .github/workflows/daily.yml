@@ -97,6 +97,23 @@ jobs:
             git push
           fi
 
+      - name: Update your Google Sheet
+        if: always() && steps.check.outputs.ok == 'true' && github.event.repository.private == true
+        continue-on-error: true
+        env:
+          SHEET_WEBHOOK_URL: ${{ secrets.SHEET_WEBHOOK_URL }}
+          SHEET_TOKEN: ${{ secrets.SHEET_TOKEN }}
+        run: python -m jobapplier --settings "$SETTINGS" sheet
+
+      - name: Email the morning summary
+        if: always() && steps.check.outputs.ok == 'true' && env.COMMAND == 'run' && github.event.repository.private == true
+        continue-on-error: true
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          SHEET_URL: ${{ vars.SHEET_URL }}
+        run: python -m jobapplier --settings "$SETTINGS" digest --log run.log
+
       - name: Keep results for download
         if: always() && steps.check.outputs.ok == 'true'
         uses: actions/upload-artifact@v4

@@ -47,6 +47,8 @@ class Settings:
     apply: dict[str, int]
     root: Path
     max_screen: int = 60
+    digest: dict[str, Any] = field(default_factory=dict)
+    sheet: dict[str, Any] = field(default_factory=dict)
 
     def candidate_facts(self) -> str:
         """Facts the AI should take as true even though a CV doesn't state them."""
@@ -114,4 +116,6 @@ def load_settings(path: str | Path = "settings.yaml") -> Settings:
         apply={k: int(v) for k, v in (raw.get("apply") or {}).items()},
         root=root,
         max_screen=int(m.get("max_screen_per_run", 60)),
+        digest=dict(raw.get("digest") or {}),
+        sheet=dict(raw.get("sheet") or {}),
     )

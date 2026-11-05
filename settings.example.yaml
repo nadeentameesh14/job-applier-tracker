@@ -103,3 +103,14 @@ answers:
 apply:
   daily_cap_linkedin: 15
   daily_cap_auto: 15
+
+# Morning email with the day's numbers, queues and anything that needs you. Uses the GMAIL_ADDRESS and
+# GMAIL_APP_PASSWORD secrets to send. "to" defaults to profile.email.
+digest:
+  enabled: true
+  to: ""
+
+# Google Sheet copy of the tracker (see docs/SETUP.md, "Google Sheet"). Put the sheet's link here so the
+# morning email links to it.
+sheet:
+  url: ""

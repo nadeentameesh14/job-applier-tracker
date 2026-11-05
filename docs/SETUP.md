@@ -77,29 +77,56 @@ Add each one in your repo under **Settings → Secrets and variables → Actions
 1. Go to the **Actions** tab. If asked, click **I understand my workflows, go ahead and enable them**.
 2. Click **Daily job run → Run workflow**. Choose `find` first to check the search without using Claude, then `run` for the full pipeline.
 3. When the run finishes, open it and download **results** at the bottom, or look in the `data/` folder of your repo:
-   - `data/tracker.csv`: open it in Excel or import it into Google Sheets
+   - `data/tracker.csv`: open it in Excel, or see it in your Google Sheet (step 9)
+   - `data/scores.csv`: every job Claude scored, with the reason
    - `data/applications/…/report.md`: what was changed for each job, and why
    - `data/applications/…/*_cv.pdf`: the tailored CV
 
-From then on it runs every day at 06:00 UTC. To change the time, edit the `cron` line in `.github/workflows/daily.yml`.
+Tick **Small test run** the first time: it scores about 15 jobs and finishes in minutes. From then on it runs every day at 06:00 UTC. If you use the laptop helper, move it earlier (e.g. `0 3 * * *`) so it finishes before the helper starts at 9am. To change the time, edit the `cron` line in `.github/workflows/daily.yml`.
 
-## 7. Laptop helper for LinkedIn Easy Apply (Mac)
+## 7. Laptop helper (Mac): LinkedIn Easy Apply and company career sites
 
-LinkedIn Easy Apply jobs are submitted from your own laptop, in a browser signed in as you, after you approve the day's batch with one click.
+Applications are submitted from your own laptop, in a browser signed in as you. Cloud servers get blocked by LinkedIn and by the "are you a robot?" checks on many career sites; your own laptop doesn't.
 
-1. Install [Python 3](https://www.python.org/downloads/) and [GitHub Desktop](https://desktop.github.com/). In GitHub Desktop, sign in and **clone** your private repo (File → Clone repository).
-2. Open **Terminal**, go to the repo folder (type `cd `, drag the folder into the window, press Enter), then run:
+- **Company career sites** (Greenhouse, Lever, Ashby, Workable) are applied to automatically, without asking.
+- **LinkedIn jobs that apply on a company site**: the helper opens the job while you're signed in to find the real apply link. If it's one of the sites above, it applies there; otherwise the job is marked "Apply on company site" with the link.
+- **LinkedIn Easy Apply** jobs wait for your one-click approval of the day's batch.
+
+1. You need Python 3.10+ ([3.12 recommended](https://www.python.org/downloads/macos/)), git (`xcode-select --install`) and Google Chrome. Clone your private repo in Terminal: `git clone https://github.com/<you>/<your-private-repo>.git ~/Documents/<your-private-repo>`.
+2. In Terminal, go to the repo folder (`cd ~/Documents/<your-private-repo>`) and run:
    ```bash
    bash helper/install_mac.sh
    ```
-   It installs what it needs, then opens a browser window: sign in to LinkedIn there once.
-3. Try a safe test, which fills in the forms but doesn't press Submit:
+   It installs what it needs, installs Claude Code and asks you to sign in to your Claude account once (it answers form questions from your CV), then opens a browser window: sign in to LinkedIn there once.
+3. Try a safe test, which fills in the forms but never presses Submit and doesn't change your tracker:
    ```bash
    ~/.job-applier/venv/bin/python -m jobapplier.helper --test
    ```
-4. From then on it starts by itself when you log in and at 9am. A page opens listing the day's Easy Apply jobs, each with its tailored CV. Untick any you don't want, press **Approve and apply**, and leave the browser window alone while it works.
+4. From then on it starts by itself when you log in and at 9am (the laptop must be on and logged in). Career-site applications start straight away; at the same time a page opens listing the day's Easy Apply jobs. Untick any you don't want and press **Approve and apply**.
 
-If a form asks something it can't answer truthfully from your CV and settings, it leaves that tab open for you and marks the job "Needs you" in the tracker. Optional: install Claude Code on the laptop (`npm install -g @anthropic-ai/claude-code`, then run `claude` once) so it can answer questions like "years of experience with Python" from your CV.
+How questions are answered:
+- From your settings first (right to work, sponsorship, notice period, salary, and optional `gender`, `ethnicity`, `religion`, `nationality` under `answers`).
+- Then by Claude, from your CV only. Answers to general questions are remembered in `~/.job-applier/learned_answers.json`, which you can edit.
+- Questions about visa type or expiry get a true, non-committal answer; a yes/no "is your right to work time-limited?" is left for you.
+- Anything it can't answer truthfully: it stops, plays a sound and shows a pop-up, leaves that tab open and marks the job "Needs you".
+
+Useful options: `--ask "words"` always stops at questions containing those words; `--ping` shows a test pop-up; `apply.always_ask: ["words", ...]` in settings does the same as `--ask` every day.
+
+## 8. Morning email
+
+After each daily run you get an email with: how many jobs were scanned, matched your filters, were scored and were suited; the LinkedIn Easy Apply jobs waiting for approval (fit, salary, missing keywords, links); what goes to company sites; what was applied to since yesterday; what needs you; why jobs were filtered out; and links to your tracker and the run.
+
+It's sent with the `GMAIL_ADDRESS` / `GMAIL_APP_PASSWORD` secrets (step 5) to `digest.to` in settings (or your profile email). Turn it off with `digest.enabled: false`.
+
+## 9. Google Sheet tracker
+
+The tracker can be copied into a Google Sheet after every run and every laptop-helper session. Your own notes in the **My notes** column, and statuses you change to Interview, Offer or Rejected, are kept.
+
+1. Create a blank Google Sheet. Open **Extensions → Apps Script**, delete the sample code and paste in everything from `helper/google_sheet.gs`.
+2. Change `TOKEN` near the top to a long random password, and press **Save**.
+3. Click **Deploy → New deployment**, choose the type **Web app**, set **Execute as: Me** and **Who has access: Anyone**, then **Deploy**. Allow the permissions it asks for (Google warns that the app isn't verified because you wrote it: click **Advanced → Go to … (unsafe)**). Copy the **Web app URL**.
+4. In your private repo add two secrets: `SHEET_WEBHOOK_URL` (the web app URL) and `SHEET_TOKEN` (the same password). Put the sheet's own link in settings as `sheet.url` so the morning email links to it.
+5. Run **Actions → Update Google Sheet → Run workflow** to fill it now.
 
 ## Running it on your laptop instead
 

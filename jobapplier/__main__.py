@@ -26,6 +26,16 @@ def _load_found() -> dict[str, Job]:
     return {d["id"]: Job.from_dict(d) for d in json.loads(_jobs_file().read_text())}
 
 
+STATS: dict = {}  # numbers from today's run, for the morning email
+
+
+def _save_stats() -> None:
+    from datetime import datetime, timezone
+    DATA.mkdir(exist_ok=True)
+    STATS["finished_at"] = datetime.now(timezone.utc).isoformat(timespec="minutes")
+    (DATA / "last_run.json").write_text(json.dumps(STATS, indent=2, default=str))
+
+
 def cmd_find(args, settings) -> list[Job]:
     from .sources import fetch_all
 
@@ -43,6 +53,9 @@ def cmd_find(args, settings) -> list[Job]:
         reasons[key] = reasons.get(key, 0) + 1
     if reasons:
         print("Skipped: " + ", ".join(f"{n} {k}" for k, n in sorted(reasons.items(), key=lambda x: -x[1])))
+    from collections import Counter
+    STATS.update(fetched=len(raw), matched=len(kept), filtered_out=dict(sorted(reasons.items(), key=lambda x: -x[1])),
+                 by_source=dict(Counter(j.source for j in raw)), source_problems=problems)
     print()
     for j in kept[: args.limit]:
         posted = j.posted_at.date().isoformat() if j.posted_at else "?"
@@ -130,6 +143,8 @@ def _log_score(path: Path, job: Job, sc, verdict: str) -> None:
 
 def cmd_run(args, settings):
     """Daily run: find, tailor the best matches up to the caps, and queue them."""
+    from datetime import datetime, timezone
+    STATS["started_at"] = datetime.now(timezone.utc).isoformat(timespec="minutes")
     kept = cmd_find(args, settings)
     caps = {"linkedin": settings.apply.get("daily_cap_linkedin", 15), "auto": settings.apply.get("daily_cap_auto", 15),
             "manual": settings.apply.get("daily_cap_linkedin", 15)}
@@ -146,9 +161,13 @@ def cmd_run(args, settings):
     cv_text = CV(settings.cv_path).full_text()
     screened = 0
     scores_path = DATA / "scores.csv"
+    STATS.update(test=bool(getattr(args, "test", False)), screened=0, suited=0,
+                 below_threshold=0, deal_breakers=0, over_cap=0, tailored=0, queued={"linkedin": 0, "auto": 0, "manual": 0},
+                 not_screened=0, min_fit_score=settings.min_fit_score)
     for job in kept:
         if screened >= settings.max_screen:
             print(f"  Reached max_screen_per_run ({settings.max_screen}); the rest wait for tomorrow.")
+            STATS["not_screened"] = len(kept) - screened
             break
         try:
             job = ensure_full_description(job)
@@ -159,12 +178,19 @@ def cmd_run(args, settings):
                         settings.candidate_facts())
         except AuthError as e:
             print(f"  ! Stopping: {e}")
+            STATS["stopped_early"] = str(e)
+            _save_stats()
             raise SystemExit(1)
         except Exception as e:
             print(f"  ! could not screen {job.title} at {job.company}: {e}")
             continue
         passes = sc.fit_score >= settings.min_fit_score and not sc.red_flags
         over_cap = passes and done[m] >= caps[m]
+        STATS["screened"] += 1
+        STATS["suited"] += int(passes)
+        STATS["deal_breakers"] += int(bool(sc.red_flags))
+        STATS["below_threshold"] += int(not sc.red_flags and sc.fit_score < settings.min_fit_score)
+        STATS["over_cap"] += int(over_cap)
         verdict = "skip" if not passes else "over today's cap" if over_cap else "tailor"
         _log_score(scores_path, job, sc, verdict)
         if not passes:
@@ -181,11 +207,28 @@ def cmd_run(args, settings):
         except Exception as e:
             print(f"  ! could not tailor {job.title} at {job.company}: {e}")
             continue
+        STATS["tailored"] += 1
         if out.fit_score >= settings.min_fit_score and not out.analysis.red_flags:
             args.job = job.id
             cmd_queue(args, settings)
             done[m] += 1
+            STATS["queued"][m] += 1
     print(f"\nQueued today: {done}")
+    _save_stats()
+
+
+def cmd_digest(args, settings):
+    from .digest import send
+    if not settings.digest.get("enabled", True) and not args.preview:
+        print("The morning email is turned off (digest.enabled: false).")
+        return
+    tail = Path(args.log).read_text()[-4000:] if args.log and Path(args.log).exists() else ""
+    print(send(settings, tail, dry_run=args.preview))
+
+
+def cmd_sheet(args, settings):
+    from .sheet import sync
+    print(sync())
 
 
 def main(argv=None):
@@ -206,10 +249,15 @@ def main(argv=None):
     r.add_argument("--limit", type=int, default=30)
     r.add_argument("--jd-file", default=None); r.add_argument("--job", default=None)
     r.add_argument("--test", action="store_true", help="small test run: score 15 jobs, tailor and queue at most 2")
+    d = sub.add_parser("digest", help="send the morning summary email")
+    d.add_argument("--preview", action="store_true", help="write data/digest_preview.html instead of sending")
+    d.add_argument("--log", default="", help="run log to quote if the run failed")
+    sub.add_parser("sheet", help="copy the tracker into your Google Sheet")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING, format="%(message)s")
     settings = load_settings(args.settings)
-    {"find": cmd_find, "tailor": cmd_tailor, "queue": cmd_queue, "run": cmd_run}[args.cmd](args, settings)
+    {"find": cmd_find, "tailor": cmd_tailor, "queue": cmd_queue, "run": cmd_run, "digest": cmd_digest,
+     "sheet": cmd_sheet}[args.cmd](args, settings)
 
 
 if __name__ == "__main__":

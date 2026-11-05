@@ -1,0 +1,27 @@
+name: Update Google Sheet
+
+# Runs when the laptop helper pushes new results, so the sheet shows what it applied to.
+on:
+  push:
+    paths: ["data/tracker.csv"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sheet:
+    if: github.event.repository.private == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Update the sheet
+        env:
+          SHEET_WEBHOOK_URL: ${{ secrets.SHEET_WEBHOOK_URL }}
+          SHEET_TOKEN: ${{ secrets.SHEET_TOKEN }}
+        run: python -m jobapplier sheet
