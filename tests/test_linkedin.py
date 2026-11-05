@@ -64,3 +64,14 @@ def test_alert_email_ids():
 def test_ago():
     from jobapplier.sources.linkedin import ago_to_date
     assert ago_to_date("2 weeks ago") is not None and ago_to_date("Reposted recently") is None
+
+
+def test_apply_routing():
+    from jobapplier.models import Job
+    j = Job(source="linkedin", title="t", company="c", location="London", url="https://www.linkedin.com/jobs/view/1/",
+            apply_url="https://www.linkedin.com/jobs/view/1/", extra={"easy_apply": True})
+    assert j.apply_method == "linkedin"
+    j.extra["easy_apply"] = False
+    assert j.apply_method == "manual"
+    j.apply_url = "https://boards.greenhouse.io/acme/jobs/1"
+    assert j.apply_method == "auto"

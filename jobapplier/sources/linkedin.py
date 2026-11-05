@@ -7,9 +7,11 @@ per role, with a pause between requests, and it stops at the first sign of rate 
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from html import unescape
+from pathlib import Path
 from urllib.parse import unquote
 
 import requests
@@ -146,7 +148,11 @@ def full_details(job: Job) -> Job:
     jid = job.extra.get("linkedin_id")
     if not jid or not job.extra.get("snippet_only"):
         return job
-    d = parse_detail(_get(DETAIL.format(id=jid)))
+    html = _get(DETAIL.format(id=jid))
+    if os.environ.get("LINKEDIN_DEBUG_DIR"):  # keep the raw page to check the parser against
+        Path(os.environ["LINKEDIN_DEBUG_DIR"]).mkdir(parents=True, exist_ok=True)
+        (Path(os.environ["LINKEDIN_DEBUG_DIR"]) / f"{jid}.html").write_text(html)
+    d = parse_detail(html)
     if len(d["description"]) > len(job.description):
         job.description = d["description"][:20000]
         job.extra["snippet_only"] = False

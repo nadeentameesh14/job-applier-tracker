@@ -37,7 +37,9 @@ class Job:
         """How this job would be applied to: auto (company ATS form), linkedin (needs approval), manual."""
         u = (self.apply_url or self.url).lower()
         if "linkedin.com" in u:
-            return "linkedin"
+            # LinkedIn only shows a company's own apply link to signed-in users, so a job that applies
+            # off LinkedIn (easy_apply False) can't be routed to a career-site form from the cloud.
+            return "manual" if self.extra.get("easy_apply") is False else "linkedin"
         if any(h in u for h in ("greenhouse.io", "lever.co", "ashbyhq.com", "workable.com")):
             return "auto"
         return "manual"
