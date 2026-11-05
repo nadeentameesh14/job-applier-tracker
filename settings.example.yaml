@@ -1,0 +1,80 @@
+# Copy this file to settings.yaml in YOUR PRIVATE copy of the repo and edit it.
+# Everything the bot does is driven from here.
+
+profile:
+  name: "Your Name"
+  email: "you@example.com"
+  phone: "+44 7000 000000"
+  linkedin: "linkedin.com/in/your-profile"
+
+# Your CV as a Word file. Tailored copies keep its exact design.
+cv_path: "cv/cv.docx"
+# Tailored CVs must fit on this many pages (extra items are trimmed, least relevant first).
+max_pages: 1
+
+search:
+  # Job titles to look for, highest priority first. Matched against job titles.
+  roles:
+    - Data Engineer
+    - AI Engineer
+    - ML Engineer
+    - Machine Learning Engineer
+    - Analytics Engineer
+    - Data Scientist
+  # Titles containing any of these words are skipped.
+  exclude_title_words: [Intern, Internship, Graduate, Junior, Head of, Director, VP, Chief, Apprentice]
+  # Jobs posted more than this many days ago are skipped.
+  max_age_days: 21
+  # Places you'd work in person. A job matches if its location contains any of these.
+  # The first entry is ranked highest.
+  locations: [London, Reading, Slough, Watford, St Albans, Guildford, Woking, Croydon, Cambridge, Oxford, Brighton, Milton Keynes]
+  # Accept fully remote jobs in this country.
+  remote_ok: true
+  country: "UK"
+  # Skip jobs whose advertised maximum salary is below this. Jobs with no salary listed are kept.
+  min_salary: 50000
+  currency: "GBP"
+  # Companies you never want to apply to.
+  exclude_companies: ["Your Current Employer"]
+
+  # Company job boards searched directly (free, no API key).
+  # ats: greenhouse | lever | ashby ; token: the company's board name in its careers URL.
+  # Add your own: https://boards.greenhouse.io/<token>, https://jobs.lever.co/<token>, https://jobs.ashbyhq.com/<token>
+  companies:
+    - {name: Monzo, ats: greenhouse, token: monzo}
+    - {name: Deliveroo, ats: greenhouse, token: deliveroo}
+    - {name: GoCardless, ats: greenhouse, token: gocardless}
+    - {name: Tide, ats: greenhouse, token: tide}
+    - {name: Wayve, ats: greenhouse, token: wayve}
+    - {name: Anthropic, ats: greenhouse, token: anthropic}
+    - {name: Palantir, ats: lever, token: palantir}
+    - {name: ElevenLabs, ats: ashby, token: elevenlabs}
+    - {name: Synthesia, ats: ashby, token: synthesia}
+
+  # Optional aggregators (need free API keys, set as secrets):
+  # ADZUNA_APP_ID + ADZUNA_APP_KEY  -> https://developer.adzuna.com
+  # REED_API_KEY                    -> https://www.reed.co.uk/developers/jobseeker
+  adzuna: {enabled: true, results_per_role: 50}
+  reed: {enabled: true, results_per_role: 50}
+
+matching:
+  # Jobs scoring below this (0-100) against your CV are skipped.
+  min_fit_score: 70
+  # Claude model used for job analysis and CV tailoring.
+  model: "claude-opus-5-5"
+
+# Skills you really have that aren't written on your CV. The tailoring step may
+# add these; it will never add anything that is in neither your CV nor this list.
+extra_skills: []
+
+# Answers used for application screening questions.
+answers:
+  right_to_work: "Yes"
+  needs_sponsorship: "No"
+  notice_period: "1 month"
+  # Used when the job has no posted range. With a posted range, the middle of it is used.
+  expected_salary: 55000
+
+apply:
+  daily_cap_linkedin: 15
+  daily_cap_auto: 15

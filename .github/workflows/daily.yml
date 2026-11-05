@@ -1,0 +1,91 @@
+name: Daily job run
+
+on:
+  schedule:
+    - cron: "0 6 * * *"  # 06:00 UTC every day
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "What to run"
+        type: choice
+        options: [run, find]
+        default: run
+      settings:
+        description: "Settings file"
+        default: settings.yaml
+
+permissions:
+  contents: write  # to save the tracker and tailored CVs back to your private repo
+
+concurrency:
+  group: daily-job-run
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SETTINGS: ${{ inputs.settings || 'settings.yaml' }}
+      COMMAND: ${{ inputs.command || 'run' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check settings exist
+        id: check
+        run: |
+          if [ -f "$SETTINGS" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No $SETTINGS here, so nothing to do. Make a private copy of this template and add your settings (docs/SETUP.md)."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Refuse to run personal data in a public repo
+        if: steps.check.outputs.ok == 'true' && env.COMMAND == 'run' && github.event.repository.private == false
+        run: |
+          echo "::error::This repo is public, so run logs and saved CVs would be visible to anyone. Use a private copy (docs/SETUP.md)."
+          exit 1
+
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.ok == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install LibreOffice (PDFs and page counts)
+        if: steps.check.outputs.ok == 'true' && env.COMMAND == 'run'
+        run: sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends libreoffice-writer fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea
+
+      - name: Install
+        if: steps.check.outputs.ok == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Run
+        if: steps.check.outputs.ok == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          REED_API_KEY: ${{ secrets.REED_API_KEY }}
+        run: python -m jobapplier --settings "$SETTINGS" "$COMMAND" | tee run.log
+
+      - name: Save results to the repo
+        if: steps.check.outputs.ok == 'true' && github.event.repository.private == true
+        run: |
+          git config user.name "job-applier-bot"
+          git config user.email "job-applier-bot@users.noreply.github.com"
+          git add -f data/ || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Daily run $(date -u +%F)"
+            git push
+          fi
+
+      - name: Keep results for download
+        if: steps.check.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ github.run_number }}
+          path: |
+            data/
+            run.log
+          retention-days: 14

@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+# Lock files LibreOffice leaves next to open documents
+.~lock.*
+# The public template never contains anyone's data. In YOUR PRIVATE copy, delete the
+# three lines below so your settings, CV and tracker are saved with the repo.
+settings.yaml
+cv/
+data/

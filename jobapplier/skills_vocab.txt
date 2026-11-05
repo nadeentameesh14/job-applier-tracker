@@ -1,0 +1,197 @@
+# Skill and tool names the truthfulness check watches for.
+# If a tailored CV contains one of these and your original CV + extra_skills don't, the edit is rejected.
+Python
+R
+Java
+Scala
+Go
+Golang
+Rust
+C++
+C#
+JavaScript
+TypeScript
+SQL
+NoSQL
+Bash
+Shell
+PySpark
+Spark
+Apache Spark
+Hadoop
+Hive
+Kafka
+Flink
+Beam
+Airflow
+Dagster
+Prefect
+Luigi
+dbt
+Fivetran
+Stitch
+Airbyte
+Informatica
+Talend
+SSIS
+Matillion
+Glue
+AWS Glue
+EMR
+Kinesis
+Redshift
+Athena
+Lambda
+SageMaker
+Bedrock
+S3
+SQS
+SNS
+IAM
+CloudFormation
+CDK
+ECS
+EKS
+EC2
+Step Functions
+DynamoDB
+Aurora
+RDS
+Azure
+Synapse
+Data Factory
+Azure Data Factory
+Fabric
+Microsoft Fabric
+Databricks
+Delta Lake
+Unity Catalog
+GCP
+Google Cloud
+BigQuery
+Dataflow
+Dataproc
+Vertex AI
+Pub/Sub
+Looker
+Snowflake
+Snowpark
+Postgres
+PostgreSQL
+MySQL
+SQL Server
+Oracle
+MongoDB
+Cassandra
+Redis
+Elasticsearch
+OpenSearch
+Neo4j
+Pinecone
+Weaviate
+pgvector
+Chroma
+Docker
+Kubernetes
+Terraform
+Ansible
+Helm
+Jenkins
+GitHub Actions
+GitLab
+CircleCI
+Bitbucket
+Jira
+Confluence
+Git
+Linux
+Tableau
+Power BI
+Looker Studio
+Qlik
+Excel
+VBA
+pandas
+NumPy
+SciPy
+Polars
+scikit-learn
+sklearn
+XGBoost
+LightGBM
+CatBoost
+TensorFlow
+Keras
+PyTorch
+JAX
+Hugging Face
+Transformers
+LangChain
+LangGraph
+LlamaIndex
+OpenAI
+GPT
+Claude
+Gemini
+Llama
+Mistral AI
+RAG
+Retrieval-Augmented Generation
+vector database
+fine-tuning
+MLflow
+Kubeflow
+Weights & Biases
+FastAPI
+Flask
+Django
+Streamlit
+React
+Node.js
+GraphQL
+REST
+gRPC
+Parquet
+Avro
+Iceberg
+Hudi
+Kimball
+Data Vault
+Great Expectations
+Monte Carlo
+Collibra
+Alteryx
+SAS
+SPSS
+Stata
+MATLAB
+Salesforce
+HubSpot
+SAP
+Agile
+Scrum
+Kanban
+PRINCE2
+ITIL
+TOGAF
+Six Sigma
+ELT
+CI/CD
+MLOps
+DataOps
+DevOps
+Computer Vision
+NLP
+Deep Learning
+Reinforcement Learning
+Time Series
+A/B testing
+Causal Inference
+Bayesian
+Strands
+AgentCore
+MCP
+Cursor
+Kiro
+Claude Code
+Copilot
