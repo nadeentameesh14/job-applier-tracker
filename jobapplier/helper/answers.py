@@ -18,6 +18,11 @@ RULES: list[tuple[str, str]] = [
     (r"\b(security clearance|clearance)\b", "security_clearance"),
     (r"\b(position|role|job( title)?) (you are |you're |are you )?applying for\b", "job_title"),
     (r"\bgender\b|\bsex\b", "gender"),
+    (r"^(legal |preferred )?first name\b|\bgiven name\b|\bforename\b", "first_name"),
+    (r"^(legal )?last name\b|\bsurname\b|\bfamily name\b", "last_name"),
+    (r"^(full |your |legal )?name$", "name"),
+    (r"\bhow did you (hear|find|learn)\b|\bwhere did you (hear|find|see)\b|\bsource\b", "heard_from"),
+    (r"\b(veteran|disabilit\w*)\b", "decline"),
     (r"\b(religio\w*|belief|faith)\b", "religion"),
     # Northern Ireland style "community background" (Protestant / Roman Catholic / Neither)
     (r"\bcommunity background\b", "community_background"),
@@ -36,12 +41,18 @@ VISA_TEXT = "I have the right to work in the UK and I am currently on my graduat
 
 
 def lookup(label: str, profile: dict, answers: dict) -> str | None:
-    low = label.lower()
+    low = " ".join(label.lower().replace("*", " ").split())
     known = {**{k: str(v) for k, v in profile.items()}, **{k: str(v) for k, v in answers.items()}}
     known.setdefault("city", known.get("location", "London, United Kingdom"))
     if known.get("linkedin") and not known["linkedin"].startswith("http"):
         known["linkedin"] = "https://www." + known["linkedin"].removeprefix("www.")
     known.setdefault("commute", "Yes")
+    known.setdefault("heard_from", "LinkedIn")
+    known.setdefault("decline", "Prefer not to say")
+    if known.get("name"):
+        parts = known["name"].split()
+        known.setdefault("first_name", parts[0])
+        known.setdefault("last_name", " ".join(parts[1:]) or parts[0])
     if known.get("religion") and known.get("religion", "").lower() not in ("christian", "catholic", "protestant"):
         known.setdefault("community_background", "Neither")
     for pat, key in RULES:
@@ -162,11 +173,20 @@ def pick_option(value: str, options: list[str]) -> str | None:
     for o in options:
         if o.strip().lower() == v:
             return o
-    for o in options:
-        if v and (v in o.lower() or o.lower() in v) and o.strip().lower() not in ("select an option", ""):
-            return o
+    if v.startswith("prefer not") or v.startswith("decline"):
+        for o in options:
+            if re.search(r"decline|(not|n.t) (wish|want|to (say|answer|disclose))|prefer not|rather not", o, re.I):
+                return o
+        return None
     if v in ("yes", "no"):
         for o in options:
-            if o.strip().lower().startswith(v):
+            if re.match(rf"{v}\b", o.strip().lower()):
                 return o
+        return None
+    for o in options:
+        ol = o.strip().lower()
+        if not v or ol in ("select an option", ""):
+            continue
+        if re.search(rf"\b{re.escape(v)}\b", ol) or (len(ol) > 3 and re.search(rf"\b{re.escape(ol)}\b", v)):
+            return o
     return None

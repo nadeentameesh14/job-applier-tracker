@@ -56,6 +56,33 @@ def load_queue(repo: Path) -> list[dict]:
     return sorted(items, key=lambda x: -int(x["fit"] or 0))
 
 
+def load_career(repo: Path) -> list[dict]:
+    """Jobs to apply for on company sites without asking: career-site jobs, plus LinkedIn jobs that apply
+    off LinkedIn (their real apply link is found while you're signed in). Best fit first."""
+    trk = {}
+    p = repo / "data" / "tracker.csv"
+    if p.exists():
+        trk = {r["job_id"]: r for r in csv.DictReader(p.open(newline=""))}
+    items = []
+    for f in sorted((repo / "data" / "applications").glob("*/application.json")):
+        a = json.loads(f.read_text())
+        job = json.loads((f.parent / "job.json").read_text()) if (f.parent / "job.json").exists() else {}
+        url = job.get("url", a.get("apply_url", ""))
+        st = a.get("status")
+        retry = TEST_MODE and st == "Needs you"
+        if a.get("apply_method") == "auto" and (st == T.READY_AUTO or retry):
+            pass
+        elif a.get("apply_method") == "manual" and "linkedin.com" in url and (st == T.AWAITING_APPROVAL or retry):
+            pass
+        else:
+            continue
+        row = trk.get(a["job_id"], {})
+        items.append({**a, "folder": str(f.parent), "title": job.get("title", row.get("title", "")),
+                      "company": job.get("company", row.get("company", "")), "location": job.get("location", ""),
+                      "url": url, "fit": row.get("fit_score", ""), "description": job.get("description", "")})
+    return sorted(items, key=lambda x: -int(x["fit"] or 0))
+
+
 PAGE = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>Approve today's applications</title>
 <style>body{{font:15px system-ui;max-width:760px;margin:24px auto;padding:0 16px;color:#222}}
@@ -67,8 +94,9 @@ while it works (about a minute per job).</p>
 <button type=submit>Approve and apply</button> &nbsp; <button type=submit formaction=/skip>Not today</button></form>"""
 
 
-def approval_page(items: list[dict]) -> list[str] | None:
-    """Show the batch on a local web page; return the approved job ids (None if skipped)."""
+def approval_page(items: list[dict]):
+    """Show the batch on a local web page. Returns a function that waits for your answer and gives the
+    approved job ids (None if skipped)."""
     rows = "".join(
         f"<li><label><input type=checkbox name=id value='{html.escape(i['job_id'])}' checked> "
         f"<b>{html.escape(i['title'])}</b> at {html.escape(i['company'])} "
@@ -100,10 +128,13 @@ def approval_page(items: list[dict]) -> list[str] | None:
     srv = HTTPServer(("127.0.0.1", PORT), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     webbrowser.open(f"http://127.0.0.1:{PORT}/")
-    print(f"Approval page: http://127.0.0.1:{PORT}/ (waiting for you)")
-    done.wait()
-    srv.shutdown()
-    return result.get("ids")
+    print(f"Approval page: http://127.0.0.1:{PORT}/ (open in your browser; career-site applications carry on meanwhile)")
+
+    def wait() -> list[str] | None:
+        done.wait()
+        srv.shutdown()
+        return result.get("ids")
+    return wait
 
 
 def browser(pw):
@@ -133,6 +164,22 @@ def ensure_signed_in(page) -> bool:
         return False
 
 
+def wait_for_you(ctx, message: str) -> None:
+    """Keep the browser open until you're done: Enter in Terminal, or closing the browser window
+    (when the helper was started automatically there's no Terminal to press Enter in)."""
+    print(message)
+    if sys.stdin and sys.stdin.isatty():
+        try:
+            input()
+            return
+        except EOFError:
+            pass
+    try:
+        ctx.wait_for_event("close", timeout=6 * 3600 * 1000)
+    except Exception:
+        pass
+
+
 def notify(title: str, message: str, popup: bool = True) -> None:
     """Get your attention on a Mac: a sound, a notification, and (by default) a pop-up window that stays
     until you press OK. Banner notifications alone can be hidden by Focus or notification settings."""
@@ -157,12 +204,13 @@ def notify(title: str, message: str, popup: bool = True) -> None:
             pass
 
 
-def mark(repo: Path, item: dict, status: str, detail: str = "") -> None:
+def mark(repo: Path, item: dict, status: str, detail: str = "", extra: dict | None = None) -> None:
     if TEST_MODE:  # a test run never changes the tracker, so the same jobs can be tried again
         return
     f = Path(item["folder"]) / "application.json"
     a = json.loads(f.read_text())
     a["status"], a["detail"] = status, detail
+    a.update(extra or {})
     if status == T.APPLIED:
         a["applied_on"] = date.today().isoformat()
     f.write_text(json.dumps(a, indent=2))
@@ -240,83 +288,134 @@ def main(argv=None) -> None:
         import os
         os.execv(sys.executable, [sys.executable, "-m", "jobapplier.helper", *sys.argv[1:], "--no-restart"])
     settings = load_settings(repo / "settings.yaml")
-    items = load_queue(repo)
-    cap = settings.apply.get("daily_cap_linkedin", 15)
-    if not items:
-        print("Nothing waiting for approval today.")
+    items = load_queue(repo)[: settings.apply.get("daily_cap_linkedin", 15)]
+    career = load_career(repo)[: settings.apply.get("daily_cap_auto", 15)]
+    if not items and not career:
+        print("Nothing to do today.")
         return
-    items = items[:cap]
-    approved = approval_page(items)
-    if not approved:
-        print("Nothing approved.")
-        return
-    chosen = [i for i in items if i["job_id"] in set(approved)]
-    for i in items:
-        if i not in chosen:
-            mark(repo, i, T.SKIPPED, "Not approved")
 
-    from .easyapply import apply
     from .answers import find_claude
+    from . import careersite as CS
+    from .easyapply import apply
+
     if not find_claude():
         print("Note: Claude Code isn't installed here, so I can only answer questions covered by your settings.\n"
               "  To fix: run  bash helper/install_mac.sh  again (it installs Claude Code and asks you to sign in).")
+    wait = approval_page(items) if items else None
 
     cv_text = CV(settings.cv_path).full_text()
-    base = {"profile": settings.profile, "cv_text": cv_text}
-    applied = 0
+    always_ask = list(settings.apply.get("always_ask") or []) + args.ask
+    counts = {"applied": 0, "needs_you": 0}
+    done_items: list[dict] = []
+
+    def ctx_for(i: dict) -> dict:
+        desc = i.get("description", "")
+        if not desc:
+            try:
+                desc = json.loads((Path(i["folder"]) / "job.json").read_text()).get("description", "")
+            except Exception:
+                pass
+        return {"profile": settings.profile, "cv_text": cv_text,
+                "answers": {**settings.answers, **i.get("answers", {})},
+                "job": f"{i['title']} at {i['company']}", "job_title": i["title"].removeprefix("TEST - "),
+                "job_description": desc, "always_ask": always_ask}
+
+    def pdf_for(i: dict) -> Path:
+        return repo / i["cv_pdf"] if not Path(i["cv_pdf"]).is_absolute() else Path(i["cv_pdf"])
+
+    def record(i: dict, res, page, extra: dict | None = None):
+        """Update the tracker for one result; returns the page to use next."""
+        print(res.status + (f": {res.detail}" if res.detail else ""))
+        done_items.append(i)
+        if res.status == "applied":
+            mark(repo, i, T.APPLIED, "", extra)
+            counts["applied"] += 1
+        elif res.status == "already_applied":
+            mark(repo, i, T.APPLIED, "Already applied", extra)
+        elif res.status == "closed":
+            mark(repo, i, T.SKIPPED, res.detail, extra)
+        elif res.status == "not_easy_apply":
+            mark(repo, i, "Apply on company site", res.detail, extra)
+        else:
+            mark(repo, i, "Needs you", res.detail, extra)
+            counts["needs_you"] += 1
+            if not args.test or "Test mode" not in res.detail:
+                notify(f"Job helper needs you: {i['company']}", res.detail)
+            if not args.test:
+                return page.context.new_page()  # leave that tab open for you to finish
+        return page
+
     with sync_playwright() as pw:
         ctx = browser(pw)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
-        if not ensure_signed_in(page):
-            print("Not signed in to LinkedIn, so nothing was submitted.")
-            ctx.close()
-            return
-        for i in chosen:
-            pdf = repo / i["cv_pdf"] if not Path(i["cv_pdf"]).is_absolute() else Path(i["cv_pdf"])
-            print(f"- {i['title']} at {i['company']} ... ", end="", flush=True)
+        signed_in = ensure_signed_in(page)
+
+        # 1) company career sites: no approval needed
+        for i in career:
+            print(f"- [career site] {i['title']} at {i['company']} ... ", end="", flush=True)
+            extra = None
             try:
-                desc = ""
-                try:
-                    desc = json.loads((Path(i["folder"]) / "job.json").read_text()).get("description", "")
-                except Exception:
-                    pass
-                res = apply(page, i["url"], pdf, {**base, "answers": {**settings.answers, **i.get("answers", {})},
-                                                  "job": f"{i['title']} at {i['company']}",
-                                                  "job_title": i["title"].removeprefix("TEST - "),
-                                                  "job_description": desc,
-                                                  "always_ask": list(settings.apply.get("always_ask") or []) + args.ask},
-                            submit=not args.test)
+                url = i["url"]
+                if "linkedin.com" in url:
+                    if not signed_in:
+                        print("skipped: not signed in to LinkedIn, so the apply link can't be found")
+                        continue
+                    dest = CS.resolve_linkedin(page, url)
+                    if not dest:
+                        page = record(i, type("R", (), {"status": "not_easy_apply", "detail": "Couldn't find the apply link"})(), page)
+                        continue
+                    extra = {"apply_url": dest}
+                    if not CS.supported(dest):
+                        page = record(i, type("R", (), {"status": "not_easy_apply",
+                                                        "detail": f"Apply on the company site: {dest}"})(), page, extra)
+                        continue
+                    url = dest
+                res = CS.apply(page, url, pdf_for(i), ctx_for(i), submit=not args.test)
             except Exception as e:
                 res = type("R", (), {"status": "error", "detail": str(e)[:200]})()
-            print(res.status + (f": {res.detail}" if res.detail else ""))
-            if res.status == "applied":
-                mark(repo, i, T.APPLIED)
-                applied += 1
-            elif res.status == "already_applied":
-                mark(repo, i, T.APPLIED, "Already applied")
-            elif res.status == "needs_you":
-                mark(repo, i, "Needs you", res.detail)
-                if not args.test or "Test mode" not in res.detail:
-                    notify(f"Job helper needs you: {i['company']}", res.detail)
-                if not args.test:
-                    page = ctx.new_page()  # leave that tab open for you to finish
-            elif res.status == "not_easy_apply":
-                mark(repo, i, "Apply on company site", res.detail)
-            else:
-                mark(repo, i, "Needs you", res.detail)
+            page = record(i, res, page, extra)
+
+        if career and not args.test:  # save progress now, in case you approve the LinkedIn batch much later
+            git(repo, "add", "-A", "data")
+            git(repo, "commit", "-m", f"Laptop helper: career sites {date.today().isoformat()}")
+            git(repo, "push")
+
+        # 2) LinkedIn Easy Apply: only what you approved
+        if wait:
+            approved = wait()
+            chosen = [i for i in items if i["job_id"] in set(approved or [])]
+            for i in items:
+                if i not in chosen:
+                    mark(repo, i, T.SKIPPED, "Not approved")
+            if chosen and not signed_in:
+                signed_in = ensure_signed_in(page)
+            for i in chosen if signed_in else []:
+                print(f"- [Easy Apply] {i['title']} at {i['company']} ... ", end="", flush=True)
+                try:
+                    res = apply(page, i["url"], pdf_for(i), ctx_for(i), submit=not args.test)
+                except Exception as e:
+                    res = type("R", (), {"status": "error", "detail": str(e)[:200]})()
+                page = record(i, res, page)
         if args.test:
-            input("Test run finished. Look over the filled-in forms, then press Enter to close the browser...")
-        ctx.close()
+            wait_for_you(ctx, "Test run finished. Look over the filled-in forms, then press Enter (or close the browser)...")
+        elif counts["needs_you"]:
+            wait_for_you(ctx, f"{counts['needs_you']} application(s) need you: their tabs are open in the browser. "
+                              "Finish them, then press Enter here (or just close the browser)...")
+        try:
+            ctx.close()
+        except Exception:
+            pass
 
     if args.test:
-        notify("Job helper test finished", f"{len(chosen)} filled in; nothing was submitted", popup=False)
+        notify("Job helper test finished", f"{len(done_items)} filled in; nothing was submitted", popup=False)
         print("\nTest finished. Nothing was submitted and the tracker wasn't changed.")
         return
+    applied = counts["applied"]
     git(repo, "add", "-A", "data")
     git(repo, "commit", "-m", f"Laptop helper: applied to {applied} on {date.today().isoformat()}")
     pushed = git(repo, "push")
-    stuck = sum(1 for i in chosen if json.loads((Path(i["folder"]) / "application.json").read_text()).get("status") == "Needs you")
-    notify("Job helper finished", f"{applied} applied" + (f", {stuck} need you (their tabs are open in the browser)" if stuck else ""))
+    notify("Job helper finished", f"{applied} applied" + (f", {counts['needs_you']} needed you" if counts["needs_you"] else ""),
+           popup=False)
     print(f"\nDone: {applied} applied." + ("" if pushed.returncode == 0 else " (Couldn't push the tracker update; it will go next time.)"))
 
 

@@ -169,14 +169,23 @@ def _fill_step(modal, ctx: dict) -> list[str]:
         return v
 
     # CV upload: always attach the tailored PDF.
+    uploaded = False
     for up in modal.locator("input[type=file]").all():
         try:
+            what = " ".join([up.get_attribute("id") or "", up.get_attribute("name") or "", _label_for(up)]).lower()
+            if "cover" in what:  # never put the CV in a cover-letter box
+                continue
+            if up.evaluate("e => e.files && e.files.length > 0"):
+                continue
             up.set_input_files(ctx["cv_pdf"])
+            uploaded = True
             pause()
         except Exception:
             pass
+    if uploaded:  # career sites often read the CV and fill fields from it; let that finish first
+        time.sleep(4)
 
-    for el in modal.locator("input[type=text], input[type=tel], input[type=email], input[type=number], textarea").all():
+    for el in modal.locator("input:not([type]), input[type=text], input[type=tel], input[type=email], input[type=url], input[type=number], textarea").all():
         try:
             if not el.is_visible() or (el.input_value() or "").strip():
                 continue
@@ -207,10 +216,12 @@ def _fill_step(modal, ctx: dict) -> list[str]:
                     sel.select_option(label=match[0])
                     pause(0.3, 0.8)
                 continue
-            if current and not re.search(r"select an option", current, re.I):
+            placeholder = r"^(select|choose|please select|--|—)|select an option"
+            has_value = sel.evaluate("s => !!(s.value && s.value.trim())")
+            if current and has_value and not re.search(placeholder, current.strip(), re.I):
                 continue
             opts = [o.strip() for o in sel.locator("option").all_inner_texts() if o.strip()]
-            opts = [o for o in opts if not re.search(r"select an option", o, re.I)]
+            opts = [o for o in opts if not re.search(placeholder, o, re.I)]
             label = _label_for(sel)
             v = answer(label, opts)
             if v is None:
@@ -221,10 +232,29 @@ def _fill_step(modal, ctx: dict) -> list[str]:
         except Exception:
             continue
 
+    # tick consent boxes ("I agree to the privacy policy", "I confirm the above is accurate")
+    for cb in modal.locator("input[type=checkbox]").all():
+        try:
+            if cb.is_checked():
+                continue
+            lab = _label_for(cb)
+            if re.search(r"\b(agree|consent|acknowledge|privacy|terms|confirm|certify|accurate|accept)\b", lab, re.I) \
+                    and not re.search(r"\b(marketing|newsletter|future (jobs|roles|opportunities)|follow)\b", lab, re.I):
+                cb.check(force=True, timeout=5000)
+                pause(0.2, 0.5)
+        except Exception:
+            continue
+
     for fs in modal.locator("fieldset").all():
         try:
             radios = fs.locator("input[type=radio]")
+            if not radios.count():
+                boxes = fs.locator("input[type=checkbox]")
+                if boxes.count() > 1 and not fs.locator("input[type=checkbox]:checked").count():
+                    radios = boxes  # a pick-one-or-more group: tick the best answer
             if not radios.count() or fs.locator("input[type=radio]:checked").count():
+                continue
+            if radios.first.get_attribute("type") == "checkbox" and fs.locator("input[type=checkbox]:checked").count():
                 continue
             label = _group_question(fs)
             opts = [_option_text(r) for r in radios.all()]
