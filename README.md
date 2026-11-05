@@ -84,7 +84,7 @@ Tracker statuses: Tailored → Awaiting approval (LinkedIn or manual) / Ready to
 - [x] Keyword analysis and truthful CV tailoring with a one-page limit
 - [x] Apply queue and CSV tracker
 - [ ] Automatic submission on Greenhouse, Lever, Ashby and Workable forms
-- [ ] Laptop helper for LinkedIn Easy Apply (approve once, it submits)
+- [x] Laptop helper for LinkedIn Easy Apply (approve once, it submits) — Mac, see docs/SETUP.md
 - [ ] Daily email digest with one-click approval, and LinkedIn job-alert emails as a source
 - [ ] Google Sheets tracker and Gmail reply tracking (interviews and rejections)
 

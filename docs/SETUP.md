@@ -83,6 +83,24 @@ Add each one in your repo under **Settings → Secrets and variables → Actions
 
 From then on it runs every day at 06:00 UTC. To change the time, edit the `cron` line in `.github/workflows/daily.yml`.
 
+## 7. Laptop helper for LinkedIn Easy Apply (Mac)
+
+LinkedIn Easy Apply jobs are submitted from your own laptop, in a browser signed in as you, after you approve the day's batch with one click.
+
+1. Install [Python 3](https://www.python.org/downloads/) and [GitHub Desktop](https://desktop.github.com/). In GitHub Desktop, sign in and **clone** your private repo (File → Clone repository).
+2. Open **Terminal**, go to the repo folder (type `cd `, drag the folder into the window, press Enter), then run:
+   ```bash
+   bash helper/install_mac.sh
+   ```
+   It installs what it needs, then opens a browser window: sign in to LinkedIn there once.
+3. Try a safe test, which fills in the forms but doesn't press Submit:
+   ```bash
+   ~/.job-applier/venv/bin/python -m jobapplier.helper --test
+   ```
+4. From then on it starts by itself when you log in and at 9am. A page opens listing the day's Easy Apply jobs, each with its tailored CV. Untick any you don't want, press **Approve and apply**, and leave the browser window alone while it works.
+
+If a form asks something it can't answer truthfully from your CV and settings, it leaves that tab open for you and marks the job "Needs you" in the tracker. Optional: install Claude Code on the laptop (`npm install -g @anthropic-ai/claude-code`, then run `claude` once) so it can answer questions like "years of experience with Python" from your CV.
+
 ## Running it on your laptop instead
 
 1. Install [Python 3.11+](https://www.python.org/downloads/), [LibreOffice](https://www.libreoffice.org/download/) (used to make PDFs and count pages) and Claude Code (`npm install -g @anthropic-ai/claude-code`, then run `claude` once to sign in).
