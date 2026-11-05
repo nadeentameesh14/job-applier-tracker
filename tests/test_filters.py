@@ -7,7 +7,7 @@ from jobapplier.models import Job
 NOW = datetime.now(timezone.utc)
 S = Search(roles=["Data Engineer", "ML Engineer", "AI Engineer"], exclude_title_words=["Junior", "Head of"],
            max_age_days=21, locations=["London", "Reading"], remote_ok=True, min_salary=50000,
-           exclude_companies=["Mistral Data"])
+           exclude_companies=["Current Employer Ltd"])
 
 
 def job(**kw):
@@ -25,7 +25,7 @@ def test_title_matching_and_aliases():
 
 def test_rejections():
     assert reject_reason(job(), S) is None
-    assert reject_reason(job(company="Mistral Data"), S) == "excluded company"
+    assert reject_reason(job(company="Current Employer Ltd"), S) == "excluded company"
     assert "Junior" in reject_reason(job(title="Junior Data Engineer"), S)
     assert reject_reason(job(location="Berlin, Germany"), S).startswith("location")
     assert reject_reason(job(location="Remote (UK)", remote=True), S) is None
