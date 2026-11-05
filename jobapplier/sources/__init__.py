@@ -6,7 +6,7 @@ import os
 
 from ..config import Settings
 from ..models import Job
-from . import adzuna, ashby, greenhouse, lever, reed
+from . import adzuna, ashby, greenhouse, lever, linkedin, reed
 
 log = logging.getLogger(__name__)
 
@@ -43,4 +43,11 @@ def fetch_all(settings: Settings) -> tuple[list[Job], list[str]]:
             problems.append(f"Reed: {e}")
     elif s.reed.get("enabled"):
         problems.append("Reed skipped: REED_API_KEY not set")
+    if s.linkedin.get("enabled"):
+        try:
+            found = linkedin.search(s, s.linkedin)
+            log.info("LinkedIn: %d jobs", len(found))
+            jobs += found
+        except Exception as e:
+            problems.append(f"LinkedIn: {e}")
     return jobs, problems

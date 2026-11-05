@@ -86,7 +86,7 @@ def sort_key(job: Job, s: Search):
 
 def dedupe(jobs: list[Job]) -> list[Job]:
     """Keep one job per company+title, preferring direct company boards (full description, auto-apply)."""
-    pref = {"greenhouse": 0, "lever": 0, "ashby": 0, "reed": 1, "adzuna": 2}
+    pref = {"greenhouse": 0, "lever": 0, "ashby": 0, "linkedin": 1, "reed": 2, "adzuna": 3}
     best: dict[str, Job] = {}
     for j in jobs:
         k = j.dedupe_key

@@ -9,7 +9,7 @@ from typing import Any
 
 @dataclass
 class Job:
-    source: str  # greenhouse | lever | ashby | adzuna | reed | manual
+    source: str  # greenhouse | lever | ashby | linkedin | adzuna | reed | manual
     title: str
     company: str
     location: str

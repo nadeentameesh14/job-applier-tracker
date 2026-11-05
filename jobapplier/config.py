@@ -29,6 +29,7 @@ class Search:
     companies: list[Company] = field(default_factory=list)
     adzuna: dict[str, Any] = field(default_factory=dict)
     reed: dict[str, Any] = field(default_factory=dict)
+    linkedin: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -74,6 +75,7 @@ def load_settings(path: str | Path = "settings.yaml") -> Settings:
         companies=companies,
         adzuna=dict(s.get("adzuna") or {}),
         reed=dict(s.get("reed") or {}),
+        linkedin=dict(s.get("linkedin") or {}),
     )
     m = raw.get("matching") or {}
     root = path.resolve().parent

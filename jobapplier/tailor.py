@@ -11,7 +11,7 @@ from . import llm
 from .config import Settings
 from .cv import CV, fit_to_pages
 from .models import Job
-from .sources import reed
+from .sources import linkedin, reed
 from .sources.http import get_text
 from .text import html_to_text
 from .truth import violations
@@ -42,6 +42,8 @@ def ensure_full_description(job: Job) -> Job:
     if not job.extra.get("snippet_only"):
         return job
     try:
+        if job.source == "linkedin":
+            return linkedin.full_details(job)
         if job.source == "reed" and os.environ.get("REED_API_KEY") and job.extra.get("reed_id"):
             full = reed.full_description(job.extra["reed_id"], os.environ["REED_API_KEY"])
         else:
