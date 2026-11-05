@@ -94,6 +94,10 @@ answers:
   experience: "About 4 years in tech. Happy with any role that asks for 2+ years of experience."
   # Used when the job has no posted range. With a posted range, the middle of it is used.
   expected_salary: 55000
+  # Optional answers for equal-opportunity questions (leave out to have the helper stop and ask you).
+  # gender: "Female"
+  # ethnicity: "Prefer not to say"
+  # nationality: ""
 
 apply:
   daily_cap_linkedin: 15

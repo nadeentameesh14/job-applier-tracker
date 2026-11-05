@@ -133,6 +133,18 @@ def ensure_signed_in(page) -> bool:
         return False
 
 
+def notify(title: str, message: str) -> None:
+    """A Mac notification with a sound, so you know when a form is waiting for you."""
+    if sys.platform != "darwin":
+        return
+    q = lambda t: t.replace("\\", "\\\\").replace('"', '\\"')[:220]
+    try:
+        subprocess.run(["osascript", "-e", f'display notification "{q(message)}" with title "{q(title)}" sound name "Glass"'],
+                       capture_output=True, timeout=10)
+    except Exception:
+        pass
+
+
 def mark(repo: Path, item: dict, status: str, detail: str = "") -> None:
     if TEST_MODE:  # a test run never changes the tracker, so the same jobs can be tried again
         return
@@ -240,8 +252,15 @@ def main(argv=None) -> None:
             pdf = repo / i["cv_pdf"] if not Path(i["cv_pdf"]).is_absolute() else Path(i["cv_pdf"])
             print(f"- {i['title']} at {i['company']} ... ", end="", flush=True)
             try:
-                res = apply(page, i["url"], pdf, {**base, "answers": i.get("answers", {}),
-                                                  "job": f"{i['title']} at {i['company']}"}, submit=not args.test)
+                desc = ""
+                try:
+                    desc = json.loads((Path(i["folder"]) / "job.json").read_text()).get("description", "")
+                except Exception:
+                    pass
+                res = apply(page, i["url"], pdf, {**base, "answers": {**settings.answers, **i.get("answers", {})},
+                                                  "job": f"{i['title']} at {i['company']}",
+                                                  "job_title": i["title"].removeprefix("TEST - "),
+                                                  "job_description": desc}, submit=not args.test)
             except Exception as e:
                 res = type("R", (), {"status": "error", "detail": str(e)[:200]})()
             print(res.status + (f": {res.detail}" if res.detail else ""))
@@ -252,6 +271,8 @@ def main(argv=None) -> None:
                 mark(repo, i, T.APPLIED, "Already applied")
             elif res.status == "needs_you":
                 mark(repo, i, "Needs you", res.detail)
+                if not args.test or "Test mode" not in res.detail:
+                    notify(f"Job helper needs you: {i['company']}", res.detail)
                 if not args.test:
                     page = ctx.new_page()  # leave that tab open for you to finish
             elif res.status == "not_easy_apply":
@@ -268,6 +289,8 @@ def main(argv=None) -> None:
     git(repo, "add", "-A", "data")
     git(repo, "commit", "-m", f"Laptop helper: applied to {applied} on {date.today().isoformat()}")
     pushed = git(repo, "push")
+    stuck = sum(1 for i in chosen if json.loads((Path(i["folder"]) / "application.json").read_text()).get("status") == "Needs you")
+    notify("Job helper finished", f"{applied} applied" + (f", {stuck} need you (their tabs are open in the browser)" if stuck else ""))
     print(f"\nDone: {applied} applied." + ("" if pushed.returncode == 0 else " (Couldn't push the tracker update; it will go next time.)"))
 
 

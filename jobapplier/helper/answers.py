@@ -9,27 +9,40 @@ from pathlib import Path
 
 # (label pattern, settings key or literal) checked in order; first match wins.
 RULES: list[tuple[str, str]] = [
-    (r"\b(sponsor|sponsorship|visa)\b", "needs_sponsorship"),
+    # questions about visa type or expiry: never claim it isn't time-limited (see ASK_YOU / VISA_TEXT below)
+    (r"(time-?limited|expir|visa (type|category|status)|type of visa|immigration status|leave to remain)", "__visa__"),
+    (r"\b(sponsor|sponsorship)\b", "needs_sponsorship"),
     (r"\b(right to work|authori[sz]ed to work|eligible to work|legally (able|allowed|entitled))\b", "right_to_work"),
     (r"\bnotice\b", "notice_period"),
     (r"\b(salary|compensation|pay expectation|expected (pay|salary)|desired pay)\b", "expected_salary"),
     (r"\b(security clearance|clearance)\b", "security_clearance"),
-    (r"\b(phone|mobile)\b", "phone"),
-    (r"\bemail\b", "email"),
+    (r"\b(position|role|job( title)?) (you are |you're |are you )?applying for\b", "job_title"),
+    (r"\bgender\b|\bsex\b", "gender"),
+    (r"\b(ethnic\w*|community background|race|racial)\b", "ethnicity"),
+    (r"\b(nationality|citizenship)\b", "nationality"),
     (r"\blinked ?in\b", "linkedin"),
+    (r"\b(phone|mobile)\b", "phone"),
+    (r"\be-?mail\b", "email"),
     # commuting / on-site questions are always "Yes" (checked before the city rule, which also mentions location)
     (r"\b(commut\w*|relocat\w*|on-?site|hybrid|in the office|office)\b", "commute"),
-    (r"\b(city|location|where are you based)\b", "city"),
+    (r"\b(address|city|location|where are you based)\b", "city"),
 ]
+
+# What to write when a free-text box asks for visa type or expiry: true, and doesn't volunteer the date.
+VISA_TEXT = "I have the right to work in the UK and don't need sponsorship. Happy to share details and documents at offer stage."
 
 
 def lookup(label: str, profile: dict, answers: dict) -> str | None:
     low = label.lower()
     known = {**{k: str(v) for k, v in profile.items()}, **{k: str(v) for k, v in answers.items()}}
-    known.setdefault("city", known.get("location", "London"))
+    known.setdefault("city", known.get("location", "London, United Kingdom"))
+    if known.get("linkedin") and not known["linkedin"].startswith("http"):
+        known["linkedin"] = "https://www." + known["linkedin"].removeprefix("www.")
     known.setdefault("commute", "Yes")
     for pat, key in RULES:
         if re.search(pat, low):
+            if key == "__visa__":
+                return "__visa__"
             v = known.get(key)
             if v:
                 return v
@@ -83,7 +96,9 @@ def ask_claude(label: str, options: list[str], cv_text: str, profile: dict, answ
         "never invent experience. If they don't settle it, answer exactly UNKNOWN. For years of experience, count "
         "from the CV dates and give a whole number (just the number if the question asks how many years). If the "
         "CV shows no experience with a tool, say so honestly (e.g. 'No' or '0'). If options are given, answer with "
-        "one option's exact text. Keep free-text answers short (one or two sentences).\n\n"
+        "one option's exact text. Keep free-text answers short (one or two sentences).\n"
+        "For 'how many years of experience with X' questions never answer UNKNOWN: add up the CV roles where X (or "
+        "clearly the same work) appears and give a whole number, or 0 if it doesn't appear at all.\n\n"
         f"<cv>\n{cv_text}\n</cv>\n<facts>\n{json.dumps({**profile, **answers}, default=str)}\n</facts>\n"
         f"<job>{job}</job>\n<question>{label}</question>\n"
         + (f"<options>{json.dumps(options)}</options>\n" if options else "")
@@ -107,6 +122,9 @@ def ask_claude(label: str, options: list[str], cv_text: str, profile: dict, answ
         if not match:
             return None
         ans = match[0]
+    general = not re.search(r"\b(why|this (role|job|company|position)|cover letter|tell us|describe)\b", label, re.I)
+    if not general or (not options and len(ans) > 40):
+        return ans  # specific to this job: don't reuse it elsewhere
     try:
         known[k] = ans
         LEARNED.parent.mkdir(parents=True, exist_ok=True)

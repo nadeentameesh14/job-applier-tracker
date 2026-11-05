@@ -155,11 +155,14 @@ def _fill_step(modal, ctx: dict) -> list[str]:
     unknown: list[str] = []
 
     def answer(label: str, options: list[str] | None = None) -> str | None:
-        v = A.lookup(label, ctx["profile"], ctx["answers"])
+        v = A.lookup(label, ctx["profile"], {**ctx["answers"], "job_title": ctx.get("job_title", "")})
+        if v == "__visa__":
+            # a free-text box gets a true answer that doesn't give the date; a yes/no choice waits for you
+            return None if options else A.VISA_TEXT
         if v and options:
             v = A.pick_option(v, options)
         if v is None:
-            v = A.ask_claude(label, options or [], ctx["cv_text"], ctx["profile"], ctx["answers"], ctx["job"])
+            v = A.ask_claude(label, options or [], ctx["cv_text"], ctx["profile"], ctx["answers"], ctx["job"] + ("\n" + ctx["job_description"][:4000] if ctx.get("job_description") else ""))
         return v
 
     # CV upload: always attach the tailored PDF.
@@ -193,6 +196,14 @@ def _fill_step(modal, ctx: dict) -> list[str]:
             if not sel.is_visible():
                 continue
             current = sel.evaluate("s => s.options[s.selectedIndex] ? s.options[s.selectedIndex].text : ''")
+            want = (ctx["profile"].get("email") or "").strip().lower()
+            if want and re.search(r"e-?mail", _label_for(sel), re.I):
+                # always use the email address from your settings
+                match = [o for o in sel.locator("option").all_inner_texts() if o.strip().lower() == want]
+                if match and current.strip().lower() != want:
+                    sel.select_option(label=match[0])
+                    pause(0.3, 0.8)
+                continue
             if current and not re.search(r"select an option", current, re.I):
                 continue
             opts = [o.strip() for o in sel.locator("option").all_inner_texts() if o.strip()]
