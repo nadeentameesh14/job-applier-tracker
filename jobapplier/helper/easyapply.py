@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import answers as A
 
-MODAL = "div.jobs-easy-apply-modal, div[data-test-modal], div.artdeco-modal, [role=dialog], [aria-modal=true]"
+MODAL = "dialog[open], [data-testid=dialog], div.jobs-easy-apply-modal, div[data-test-modal], div.artdeco-modal, [role=dialog], [aria-modal=true]"
 DEBUG_DIR = Path.home() / ".job-applier" / "debug"
 
 
@@ -118,6 +118,38 @@ def _label_for(field) -> str:
     return " ".join((txt or "").split())
 
 
+def _group_question(fs) -> str:
+    """The question for a group of radio buttons: its legend, the radios' aria-label (LinkedIn's
+    newer form), or the text just before the group."""
+    try:
+        txt = fs.evaluate("""fs => {
+            const lg = fs.querySelector('legend, span.fb-dash-form-element__label');
+            if (lg && lg.innerText.trim()) return lg.innerText;
+            const r = fs.querySelector('input[type=radio][aria-label]');
+            if (r) return r.getAttribute('aria-label');
+            let p = fs.previousElementSibling;
+            while (p && !p.innerText.trim()) p = p.previousElementSibling;
+            return p ? p.innerText : '';
+        }""")
+    except Exception:
+        txt = ""
+    return " ".join((txt or "").replace("*", " ").split())
+
+
+def _option_text(radio) -> str:
+    """The visible text of one radio option (its label, or the nearest text next to it)."""
+    try:
+        txt = radio.evaluate("""r => {
+            if (r.labels && r.labels.length && r.labels[0].innerText.trim()) return r.labels[0].innerText;
+            let n = r.parentElement;
+            while (n && !n.innerText.trim() && n.tagName !== 'FIELDSET') n = n.parentElement;
+            return n && n.tagName !== 'FIELDSET' ? n.innerText : (r.value || '');
+        }""")
+    except Exception:
+        txt = ""
+    return " ".join((txt or "").split())
+
+
 def _fill_step(modal, ctx: dict) -> list[str]:
     """Fill every empty field in the current step. Returns labels it couldn't answer."""
     unknown: list[str] = []
@@ -180,14 +212,23 @@ def _fill_step(modal, ctx: dict) -> list[str]:
             radios = fs.locator("input[type=radio]")
             if not radios.count() or fs.locator("input[type=radio]:checked").count():
                 continue
-            legend = fs.locator("legend, span.fb-dash-form-element__label").first
-            label = " ".join(legend.inner_text().split()) if legend.count() else _label_for(fs)
-            opts = [" ".join(t.split()) for t in fs.locator("label").all_inner_texts()]
-            v = answer(label, opts)
+            label = _group_question(fs)
+            opts = [_option_text(r) for r in radios.all()]
+            v = answer(label, [o for o in opts if o])
             if v is None:
                 unknown.append(label or "a choice")
                 continue
-            fs.locator("label", has_text=v).first.click()
+            idx = next((k for k, o in enumerate(opts) if o.lower() == str(v).lower()), None)
+            if idx is None:
+                idx = next((k for k, o in enumerate(opts) if str(v).lower() in o.lower()), None)
+            if idx is None:
+                unknown.append(label or "a choice")
+                continue
+            r = radios.nth(idx)
+            try:
+                r.check(force=True, timeout=5000)
+            except Exception:
+                r.evaluate("e => (e.labels && e.labels[0] ? e.labels[0] : e).click()")
             pause(0.3, 0.8)
         except Exception:
             continue
@@ -234,7 +275,7 @@ def apply(page, job_url: str, cv_pdf: Path, ctx: dict, submit: bool = True) -> R
             return Result("needs_you", f"Couldn't find the Next button (details saved to {f})")
         nxt.click()
         pause(1.5, 3)
-        errs = modal.locator(".artdeco-inline-feedback--error, [data-test-form-element-error-messages]")
+        errs = modal.locator(".artdeco-inline-feedback--error, [data-test-form-element-error-messages], [id^=error-message], [role=alert]")
         if any(x.is_visible() and x.inner_text().strip() for x in errs.all()):
             missing = ", ".join(u for u in unknown if u) or "a required question"
             return Result("needs_you", f"Couldn't answer: {missing}")
