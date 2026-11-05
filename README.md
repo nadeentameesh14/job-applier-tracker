@@ -4,7 +4,7 @@ A job-search assistant you run from your own GitHub account. Every morning it fi
 
 You don't need to write any code to use it. You copy the template, edit one settings file, add your CV and connect your Claude subscription, and it runs on a schedule in GitHub Actions.
 
-> **Status:** finding jobs, tailoring CVs and queueing applications all work. Automatic submission to company career sites, the LinkedIn Easy Apply laptop helper, and the daily email digest are next. See [Roadmap](#roadmap).
+> **Status:** finding jobs (including your LinkedIn alert emails), tailoring CVs, queueing, tracking and the LinkedIn Easy Apply laptop helper (Mac) all work. Automatic submission to company career sites and the daily email digest are next. See [Roadmap](#roadmap).
 
 ## What it does
 
@@ -24,7 +24,20 @@ For each job you get a `report.md` showing the keywords, coverage before and aft
 
 ## Why it doesn't auto-click LinkedIn from the cloud
 
-LinkedIn's User Agreement bans bots, and it restricts accounts that log in from cloud servers or apply in bulk. So LinkedIn Easy Apply jobs wait in a queue for your one-tap approval, and a small helper on your own laptop submits them in your normal browser (coming soon). Jobs on company career sites don't carry that account risk and can be submitted automatically.
+LinkedIn's User Agreement bans bots, and it restricts accounts that log in from cloud servers or apply in bulk. So LinkedIn Easy Apply jobs wait in a queue for your one-tap approval, and a small helper on your own laptop submits them in a normal browser window, signed in as you. Jobs on company career sites don't carry that account risk and can be submitted automatically.
+
+## Prerequisites
+
+You need:
+
+- **A GitHub account** (free). The bot runs in GitHub Actions in your own private copy.
+- **A Claude Pro or Max subscription.** The bot uses it through Claude Code, so there is no extra API bill. To create the sign-in token once you also need [Node.js](https://nodejs.org) on any computer.
+- **Your CV as a Word file** (`.docx`), ideally one page.
+- **Optional, free:** a [Reed API key](https://www.reed.co.uk/developers/jobseeker) for more UK jobs.
+- **Optional, for LinkedIn job-alert emails:** a Gmail address that receives your LinkedIn job alerts (directly or forwarded), with 2-Step Verification turned on and an [app password](https://myaccount.google.com/apppasswords).
+- **For the LinkedIn Easy Apply helper:** a Mac (macOS 13 or newer) with Python 3.10+ (3.12 recommended, from [python.org](https://www.python.org/downloads/macos/)), git (`xcode-select --install`) and Google Chrome. The Mac must be on and logged in when the helper runs (by default at 9am, or whenever you log in).
+
+You don't need a computer switched on for the daily search and tailoring; that runs in the cloud.
 
 ## Quick start
 
@@ -33,8 +46,9 @@ Full step-by-step guide: **[docs/SETUP.md](docs/SETUP.md)**. In short:
 1. Click **Use this template** → **Create a new repository** → choose **Private**. Your CV and job history will live there, so it must be private.
 2. In your private copy, delete the last three lines of `.gitignore` (`settings.yaml`, `cv/`, `data/`).
 3. Copy `settings.example.yaml` to `settings.yaml` and edit it. Add your CV as `cv/cv.docx`.
-4. Add secrets under **Settings → Secrets and variables → Actions**: `CLAUDE_CODE_OAUTH_TOKEN` (required; run `npx @anthropic-ai/claude-code setup-token` and sign in with your Claude account), plus `REED_API_KEY` (optional, free) and `ADZUNA_APP_ID`/`ADZUNA_APP_KEY` (optional; Adzuna gives 25 trial calls, then about £8 a month).
-5. Go to **Actions → Daily job run → Run workflow**. After that it runs every morning.
+4. Add secrets under **Settings → Secrets and variables → Actions**: `CLAUDE_CODE_OAUTH_TOKEN` (required; run `npx @anthropic-ai/claude-code setup-token` and sign in with your Claude account), plus `REED_API_KEY` (optional, free), `GMAIL_ADDRESS` and `GMAIL_APP_PASSWORD` (optional, to read LinkedIn alert emails) and `ADZUNA_APP_ID`/`ADZUNA_APP_KEY` (optional; Adzuna gives 25 trial calls, then about £8 a month).
+5. Go to **Actions → Daily job run → Run workflow** and tick **Small test run** first: it scores about 15 jobs and tailors a couple, so you can check the results in `data/scores.csv` within minutes. After that the full run happens every morning by itself.
+6. For LinkedIn Easy Apply, set up the laptop helper on your Mac: see [docs/SETUP.md](docs/SETUP.md#7-laptop-helper-for-linkedin-easy-apply-mac), then try `python -m jobapplier.helper --test` (fills the forms but never presses Submit).
 
 ## Running it on your own computer
 
@@ -48,6 +62,7 @@ python -m jobapplier find              # list matching jobs, with ids
 python -m jobapplier tailor --job <id> # tailor your CV for one of them and print the report
 python -m jobapplier queue --job <id>  # add it to the apply queue
 python -m jobapplier run               # all of the above for the day's best matches, up to your caps
+python -m jobapplier run --test        # small trial: score about 15 jobs and tailor a couple
 ```
 
 You can also tailor for any advert you've copied into a file:
@@ -61,6 +76,7 @@ python -m jobapplier tailor --jd-file advert.txt --title "Data Engineer" --compa
 | Path | What |
 |---|---|
 | `data/found.json` | Jobs from the latest search that passed your filters |
+| `data/scores.csv` | Every job Claude screened, with its score and the reason, so you can check the scoring makes sense |
 | `data/tracker.csv` | One row per job: dates, company, role, link, fit score, missing keywords, salary, status, CV file |
 | `data/applications/<job>/` | `*_cv.docx`, `*_cv.pdf`, `report.md`, `analysis.json`, `job.json`, and `application.json` once queued |
 
@@ -85,7 +101,8 @@ Tracker statuses: Tailored → Awaiting approval (LinkedIn or manual) / Ready to
 - [x] Apply queue and CSV tracker
 - [ ] Automatic submission on Greenhouse, Lever, Ashby and Workable forms
 - [x] Laptop helper for LinkedIn Easy Apply (approve once, it submits) — Mac, see docs/SETUP.md
-- [ ] Daily email digest with one-click approval, and LinkedIn job-alert emails as a source
+- [x] LinkedIn job-alert emails as a source (Gmail)
+- [ ] Daily email digest with one-click approval
 - [ ] Google Sheets tracker and Gmail reply tracking (interviews and rejections)
 
 ## Development
