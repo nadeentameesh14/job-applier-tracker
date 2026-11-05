@@ -112,6 +112,21 @@ def cmd_queue(args, settings):
     print(f"Queued {job.title} at {job.company}: {status} ({job.apply_method}).")
 
 
+def _log_score(path: Path, job: Job, sc, verdict: str) -> None:
+    """Every job scored, with the reason, so the scoring can be checked (opens in Excel/Sheets)."""
+    import csv
+    from datetime import date
+
+    new = not path.exists()
+    with path.open("a", newline="") as f:
+        w = csv.writer(f)
+        if new:
+            w.writerow(["date", "score", "verdict", "company", "title", "location", "source", "apply_method",
+                        "link", "reason", "deal_breakers", "concerns"])
+        w.writerow([date.today().isoformat(), sc.fit_score, verdict, job.company, job.title, job.location, job.source,
+                    job.apply_method, job.url, sc.reason, "; ".join(sc.red_flags), "; ".join(sc.concerns)])
+
+
 def cmd_run(args, settings):
     """Daily run: find, tailor the best matches up to the caps, and queue them."""
     kept = cmd_find(args, settings)
@@ -125,18 +140,14 @@ def cmd_run(args, settings):
     client = LLM(settings.provider)
     cv_text = CV(settings.cv_path).full_text()
     screened = 0
+    scores_path = DATA / "scores.csv"
     for job in kept:
         if screened >= settings.max_screen:
             print(f"  Reached max_screen_per_run ({settings.max_screen}); the rest wait for tomorrow.")
             break
-        m = job.apply_method
-        if done[m] >= caps[m]:
-            continue
         try:
             job = ensure_full_description(job)
             m = job.apply_method  # a LinkedIn job may turn out to apply on the company's own site
-            if done[m] >= caps[m]:
-                continue
             screened += 1
             sc = screen(client, settings.screen_model,
                         f"Title: {job.title}\nCompany: {job.company}\nLocation: {job.location}\n\n{job.description}", cv_text,
@@ -147,11 +158,18 @@ def cmd_run(args, settings):
         except Exception as e:
             print(f"  ! could not screen {job.title} at {job.company}: {e}")
             continue
-        if sc.fit_score < settings.min_fit_score or sc.red_flags:
+        passes = sc.fit_score >= settings.min_fit_score and not sc.red_flags
+        over_cap = passes and done[m] >= caps[m]
+        verdict = "skip" if not passes else "over today's cap" if over_cap else "tailor"
+        _log_score(scores_path, job, sc, verdict)
+        if not passes:
             trk = T.Tracker(DATA / "tracker.csv")  # reload: tailor/queue steps write to it too
             trk.upsert(job, status=T.SKIPPED, fit_score=sc.fit_score, notes="; ".join([sc.reason, *sc.red_flags, *sc.concerns]))
             trk.save()
             print(f"  - skipped {job.title} at {job.company}: score {sc.fit_score}. {sc.reason}")
+            continue
+        if over_cap:
+            print(f"  = {job.title} at {job.company}: score {sc.fit_score}, but today's {m} cap is full (kept for tomorrow)")
             continue
         try:
             out = cmd_tailor(args, settings, job, client)
@@ -162,8 +180,6 @@ def cmd_run(args, settings):
             args.job = job.id
             cmd_queue(args, settings)
             done[m] += 1
-        if all(done[k] >= caps[k] for k in ("linkedin", "auto")):
-            break
     print(f"\nQueued today: {done}")
 
 
