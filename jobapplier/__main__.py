@@ -29,6 +29,18 @@ def _load_found() -> dict[str, Job]:
 STATS: dict = {}  # numbers from today's run, for the morning email
 
 
+def _role_of(job: Job, settings) -> str:
+    from .filters import title_matches
+    i = title_matches(job.title, settings.search.roles)
+    return settings.search.roles[i] if i is not None else "Other"
+
+
+def _count_role(kind: str, job: Job, settings) -> None:
+    by = STATS.setdefault("by_role", {}).setdefault(kind, {})
+    r = _role_of(job, settings)
+    by[r] = by.get(r, 0) + 1
+
+
 def _save_stats() -> None:
     from datetime import datetime, timezone
     DATA.mkdir(exist_ok=True)
@@ -54,6 +66,10 @@ def cmd_find(args, settings) -> list[Job]:
     if reasons:
         print("Skipped: " + ", ".join(f"{n} {k}" for k, n in sorted(reasons.items(), key=lambda x: -x[1])))
     from collections import Counter
+    STATS["by_role"] = {"matched": {}, "suited": {}, "queued": {}}
+    for j in kept:
+        r = _role_of(j, settings)
+        STATS["by_role"]["matched"][r] = STATS["by_role"]["matched"].get(r, 0) + 1
     STATS.update(fetched=len(raw), matched=len(kept), filtered_out=dict(sorted(reasons.items(), key=lambda x: -x[1])),
                  by_source=dict(Counter(j.source for j in raw)), source_problems=problems)
     print()
@@ -179,6 +195,7 @@ def cmd_run(args, settings):
         except AuthError as e:
             print(f"  ! Stopping: {e}")
             STATS["stopped_early"] = str(e)
+            STATS["not_screened"] = len(kept) - screened
             _save_stats()
             raise SystemExit(1)
         except Exception as e:
@@ -188,6 +205,8 @@ def cmd_run(args, settings):
         over_cap = passes and done[m] >= caps[m]
         STATS["screened"] += 1
         STATS["suited"] += int(passes)
+        if passes:
+            _count_role("suited", job, settings)
         STATS["deal_breakers"] += int(bool(sc.red_flags))
         STATS["below_threshold"] += int(not sc.red_flags and sc.fit_score < settings.min_fit_score)
         STATS["over_cap"] += int(over_cap)
@@ -213,6 +232,7 @@ def cmd_run(args, settings):
             cmd_queue(args, settings)
             done[m] += 1
             STATS["queued"][m] += 1
+            _count_role("queued", job, settings)
     print(f"\nQueued today: {done}")
     _save_stats()
 

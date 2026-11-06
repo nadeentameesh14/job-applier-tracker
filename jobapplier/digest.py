@@ -88,7 +88,9 @@ def build(settings: Settings, log_tail: str = "") -> tuple[str, str, str]:
     subject = (f"Job bot {today.strftime('%a %d %b')}: {stats.get('fetched', 0)} scanned, {stats.get('suited', 0)} suited, "
                f"{n_queued} queued, {len(applied_recent)} applied")
     if stats.get("stopped_early"):
-        subject += " (run stopped early)"
+        low = stats["stopped_early"].lower()
+        subject = ("⚠ Claude usage limit reached. " if any(w in low for w in ("limit", "quota", "credit"))
+                   else "⚠ Claude sign-in expired. ") + subject
 
     # ---------- html ----------
     css_card = "display:inline-block;min-width:110px;margin:4px;padding:10px 12px;border:1px solid #e3e3e3;border-radius:8px"
@@ -127,7 +129,20 @@ def build(settings: Settings, log_tail: str = "") -> tuple[str, str, str]:
     if stats.get("test"):
         parts.append("<p style='color:#b45309'>This was a small test run.</p>")
     if stats.get("stopped_early"):
-        parts.append(f"<p style='color:#b91c1c'><b>The run stopped early:</b> {E(stats['stopped_early'])}</p>")
+        why = stats["stopped_early"]
+        low = why.lower()
+        if any(w in low for w in ("limit", "quota", "credit")):
+            head, todo = "Your Claude usage limit ran out during the run", (
+                "Jobs it didn't get to are kept and picked up by tomorrow's run. If this keeps happening, lower "
+                "daily_cap_* or max_screen_per_run in settings, or upgrade your Claude plan.")
+        else:
+            head, todo = "Claude couldn't sign in (the token may have expired)", (
+                "Make a new token: on your laptop run  claude setup-token  (or npx @anthropic-ai/claude-code setup-token), "
+                "then replace the CLAUDE_CODE_OAUTH_TOKEN secret in your private repo (Settings > Secrets and variables > Actions).")
+        parts.append(f"<div style='border:2px solid #b91c1c;border-radius:8px;padding:10px 14px;margin:10px 0;background:#fef2f2'>"
+                     f"<b style='color:#b91c1c'>&#9888; {E(head)}.</b> The run stopped after scoring {E(str(stats.get('screened', 0)))} "
+                     f"jobs; {E(str(stats.get('not_screened', '?')))} weren't scored.<br>{E(todo)}"
+                     f"<div style='color:#666;font-size:12px;margin-top:6px'>{E(why[:300])}</div></div>")
     if not stats:
         parts.append("<p style='color:#b91c1c'><b>Today's run didn't finish, so the numbers below are from the tracker only.</b></p>")
     parts.append("<div>" + card(stats.get("fetched", "–"), "jobs scanned") + card(stats.get("matched", "–"), "matched your filters")
@@ -136,6 +151,12 @@ def build(settings: Settings, log_tail: str = "") -> tuple[str, str, str]:
     parts.append(f"<p>All time: <b>{total_applied}</b> applications, <b>{interviews}</b> interviews or offers. "
                  + (f"<a href='{E(links['tracker'])}'>Open your tracker</a>" if links["tracker"] else "") + "</p>")
 
+    br = stats.get("by_role") or {}
+    if br.get("matched"):
+        roles = sorted(br["matched"], key=lambda r: -br["matched"][r])
+        parts.append("<h3>By role</h3>" + table(["Role", "Matched filters", "Suited", "Queued"],
+                     [[E(r), E(str(br["matched"].get(r, 0))), E(str(br.get("suited", {}).get(r, 0))),
+                       E(str(br.get("queued", {}).get(r, 0)))] for r in roles]))
     parts.append("<h3>What happens at 9am on your laptop</h3><ul>"
                  f"<li><b>{len(q_auto)}</b> company career-site applications go in automatically.</li>"
                  f"<li><b>{len(q_offsite)}</b> LinkedIn jobs that apply on a company site: the helper finds the real link and applies if it's a site it supports (otherwise it lists them for you).</li>"

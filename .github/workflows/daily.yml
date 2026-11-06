@@ -86,7 +86,7 @@ jobs:
         run: python -m jobapplier --settings "$SETTINGS" "$COMMAND" $([ "$COMMAND" = run ] && [ "${{ inputs.test }}" = true ] && echo --test) | tee run.log
 
       - name: Save results to the repo
-        if: steps.check.outputs.ok == 'true' && github.event.repository.private == true
+        if: always() && steps.check.outputs.ok == 'true' && github.event.repository.private == true
         run: |
           git config user.name "job-applier-bot"
           git config user.email "job-applier-bot@users.noreply.github.com"

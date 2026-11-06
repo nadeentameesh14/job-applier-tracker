@@ -51,7 +51,8 @@ class LLM:
             raise RuntimeError(f"Claude Code failed: {(r.stderr or r.stdout)[-500:]}")
         if out.get("is_error"):
             msg = str(out.get("result"))[:500]
-            if any(w in msg.lower() for w in ("auth", "login", "credit balance", "usage limit")):
+            if any(w in msg.lower() for w in ("auth", "login", "log in", "credit balance", "usage limit", "limit reached",
+                                              "hit your limit", "rate limit", "invalid token", "oauth", "expired", "unauthor", "401", "quota")):
                 raise AuthError(f"Claude Code can't sign in or is out of usage: {msg}")
             raise RuntimeError(f"Claude Code error: {msg}")
         data = out.get("structured_output")
