@@ -9,9 +9,10 @@ from pathlib import Path
 
 # (label pattern, settings key or literal) checked in order; first match wins.
 RULES: list[tuple[str, str]] = [
+    # sponsorship questions take your needs_sponsorship answer, even when they mention "visa status"
+    (r"\b(sponsor|sponsorship)\b", "needs_sponsorship"),
     # questions about visa type or expiry: never claim it isn't time-limited (see ASK_YOU / VISA_TEXT below)
     (r"(time-?limited|expir|visa (type|category|status)|type of visa|immigration status|leave to remain)", "__visa__"),
-    (r"\b(sponsor|sponsorship)\b", "needs_sponsorship"),
     (r"\b(right to work|authori[sz]ed to work|eligible to work|legally (able|allowed|entitled))\b", "right_to_work"),
     (r"\bnotice\b", "notice_period"),
     (r"\b(salary|compensation|pay expectation|expected (pay|salary)|desired pay)\b", "expected_salary"),
