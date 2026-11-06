@@ -192,6 +192,51 @@ def wait_for_you(ctx, message: str) -> None:
         pass
 
 
+def watch_tabs(ctx, tabs: list, message: str) -> list:
+    """Wait while you finish the applications left open. A tab whose page shows an application-received
+    message is closed and returned (so it can be marked Applied); a tab you close yourself is left as it
+    was. Returns when every tab is done, you press Enter in Terminal, the browser closes, or after 6 hours."""
+    from .careersite import SUCCESS
+    print(message, flush=True)
+    stop = threading.Event()
+    if sys.stdin and sys.stdin.isatty():
+        def _enter():
+            try:
+                input()
+            except EOFError:
+                return
+            stop.set()
+        threading.Thread(target=_enter, daemon=True).start()
+    open_tabs, finished = list(tabs), []
+    end = time.time() + 6 * 3600
+    while open_tabs and not stop.is_set() and time.time() < end:
+        for t in list(open_tabs):
+            try:
+                if t.is_closed():
+                    open_tabs.remove(t)
+                    continue
+                body = t.locator("body").inner_text(timeout=3000)[:5000]
+            except Exception:
+                if t.is_closed():
+                    open_tabs.remove(t)
+                continue
+            if SUCCESS.search(body):
+                finished.append(t)
+                open_tabs.remove(t)
+                try:
+                    t.close()
+                except Exception:
+                    pass
+        try:
+            ctx.pages  # raises once the browser has been closed
+            time.sleep(5)
+        except Exception:
+            break
+        if not ctx.pages:
+            break
+    return finished
+
+
 def notify(title: str, message: str, popup: bool = True) -> None:
     """Get your attention on a Mac: a sound, a notification, and (by default) a pop-up window that stays
     until you press OK. Banner notifications alone can be hidden by Focus or notification settings."""
@@ -360,6 +405,7 @@ def main(argv=None) -> None:
                 notify(f"Job helper needs you: {i['company']}", res.detail)
             if not args.test:
                 keep.append(page)  # leave that tab open for you to finish
+                kept_items[id(page)] = i
                 page = page.context.new_page()
         # close any other tabs the job opened (pop-ups, company pages), keeping the ones that need you
         for t in list(page.context.pages):
@@ -374,6 +420,7 @@ def main(argv=None) -> None:
         ctx = browser(pw)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         keep = []  # tabs left open for you
+        kept_items = {}
         signed_in = ensure_signed_in(page)
 
         # 1) company career sites: no approval needed
@@ -424,9 +471,15 @@ def main(argv=None) -> None:
                 page = record(i, res, page)
         if args.test:
             wait_for_you(ctx, "Test run finished. Look over the filled-in forms, then press Enter (or close the browser)...")
-        elif counts["needs_you"]:
-            wait_for_you(ctx, f"{counts['needs_you']} application(s) need you: their tabs are open in the browser. "
-                              "Finish them, then press Enter here (or just close the browser)...")
+        elif keep:
+            finished = watch_tabs(ctx, keep, f"{len(keep)} application(s) need you: their tabs are open in the browser. "
+                                  "Finish them; each tab closes itself once the site confirms your application "
+                                  "(or press Enter here / close the browser when you're done)...")
+            for t in finished:
+                i = kept_items[id(t)]
+                mark(repo, i, T.APPLIED, "Finished by you")
+                counts["applied"] += 1
+                print(f"- {i['title']} at {i['company']}: you finished it, marked Applied")
         try:
             ctx.close()
         except Exception:
