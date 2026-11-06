@@ -37,6 +37,10 @@ RULES: list[tuple[str, str]] = [
     (r"\blinked ?in\b", "linkedin"),
     (r"\b(phone|mobile)\b", "phone"),
     (r"\be-?mail\b", "email"),
+    (r"\bpronouns?\b", "pronouns"),
+    (r"\b(reasonable )?(adjustments?|accommodations?)\b", "adjustments"),
+    (r"\b(know|related to) (anyone|someone|any(one)? (current |of our )?(employees?|staff))|\bfriends? or (family|relatives?)\b"
+     r"|\brelatives?\b.{0,40}\b(work|employ)|\b(were you|have you been) referred\b|\bemployee referral\b", "know_anyone"),
     # commuting / on-site questions are always "Yes" (checked before the city rule, which also mentions location)
     (r"\b(commut\w*|relocat\w*|on-?site|hybrid|in the office|office)\b", "commute"),
     (r"\bcountry\b", "country"),
@@ -55,6 +59,8 @@ def lookup(label: str, profile: dict, answers: dict) -> str | None:
         known["linkedin"] = "https://www." + known["linkedin"].removeprefix("www.")
     known.setdefault("commute", "Yes")
     known.setdefault("heard_from", "LinkedIn")
+    known.setdefault("adjustments", "No")
+    known.setdefault("know_anyone", "No")
     known.setdefault("decline", "Prefer not to say")
     known.setdefault("country", (known["city"].split(",")[-1].strip() if "," in known["city"] else "United Kingdom"))
     for k in ("communities", "transgender", "sexual_orientation", "age_range", "disability"):
@@ -126,6 +132,38 @@ MOTIVATION = re.compile(
     r"|^\s*why\s+[\w&.'-]+(\s+[\w&.'-]+)?\s*\??\s*\*?\s*$", re.I)
 
 
+ABOUT_YOU = re.compile(
+    r"\b(describe|tell us about|tell me about|give (us |me )?an example|share (a|an|one|some)|walk us through|talk us through"
+    r"|what (is|was) (a|the|your) (project|achievement|challenge)|most (complex|challenging|impressive|proud)"
+    r"|proudest|summar(y|ise|ize)|anything else|additional information|about yourself)\b", re.I)
+
+
+def write_from_cv(exe: str, label: str, cv_text: str, profile: dict, answers: dict, job: str) -> str | None:
+    """'Describe a project you're proud of', 'Tell us about yourself' and the like: written from the CV."""
+    global last_problem
+    prompt = (
+        "Write the candidate's answer to this job-application question, in the first person, as the candidate. "
+        "Use only experience that is on the CV or in the facts and never invent anything; pick the example most "
+        "relevant to the job. Plain English, specific (what they did, the tools, the result), 60 to 150 words, no "
+        "bullet points, no em dashes. Don't mention visas, salary or notice period. For an optional 'anything else' "
+        "box, write one or two sentences on why they fit this role.\n\n"
+        f"<question>{label}</question>\n<job>{job}</job>\n<cv>\n{cv_text}\n</cv>\n"
+        f"<facts>\n{json.dumps({k: v for k, v in {**profile, **answers}.items() if k not in ('expected_salary', 'phone', 'email')}, default=str)}\n</facts>\n"
+        "Reply with ONLY the final answer inside <answer></answer> tags."
+    )
+    try:
+        r = subprocess.run([exe, "-p", "--tools", "", "--model", "sonnet"], input=prompt,
+                           capture_output=True, text=True, timeout=180)
+    except Exception as e:
+        last_problem = f"Claude Code didn't run: {e}"
+        return None
+    ans = clean_answer(r.stdout or "")
+    if r.returncode or not ans or ans.upper().startswith("UNKNOWN"):
+        last_problem = "Claude couldn't write the answer: " + ((r.stderr or r.stdout or "").strip()[-200:])
+        return None
+    return ans.replace("\u2014", ", ").strip()
+
+
 def write_motivation(exe: str, label: str, cv_text: str, profile: dict, answers: dict, job: str) -> str | None:
     """'Why do you want to join us?' and the like: research the company, then link what's interesting about it
     to the candidate's real experience. Uses web search through Claude Code."""
@@ -171,6 +209,8 @@ def ask_claude(label: str, options: list[str], cv_text: str, profile: dict, answ
         return None
     if not options and MOTIVATION.search(label):
         return write_motivation(exe, label, cv_text, profile, answers, job)
+    if not options and ABOUT_YOU.search(label):
+        return write_from_cv(exe, label, cv_text, profile, answers, job)
     prompt = (
         "You fill in one job-application question for the candidate below. Answer ONLY from the CV and facts; "
         "never invent experience. If they don't settle it, answer exactly UNKNOWN. For years of experience, count "
