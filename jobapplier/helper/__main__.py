@@ -359,12 +359,21 @@ def main(argv=None) -> None:
             if not args.test or "Test mode" not in res.detail:
                 notify(f"Job helper needs you: {i['company']}", res.detail)
             if not args.test:
-                return page.context.new_page()  # leave that tab open for you to finish
+                keep.append(page)  # leave that tab open for you to finish
+                page = page.context.new_page()
+        # close any other tabs the job opened (pop-ups, company pages), keeping the ones that need you
+        for t in list(page.context.pages):
+            if t is not page and t not in keep:
+                try:
+                    t.close()
+                except Exception:
+                    pass
         return page
 
     with sync_playwright() as pw:
         ctx = browser(pw)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        keep = []  # tabs left open for you
         signed_in = ensure_signed_in(page)
 
         # 1) company career sites: no approval needed
