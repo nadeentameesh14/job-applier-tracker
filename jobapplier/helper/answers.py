@@ -22,7 +22,13 @@ RULES: list[tuple[str, str]] = [
     (r"^(legal )?last name\b|\bsurname\b|\bfamily name\b", "last_name"),
     (r"^(full |your |legal )?name$", "name"),
     (r"\bhow did you (hear|find|learn)\b|\bwhere did you (hear|find|see)\b|\bsource\b", "heard_from"),
-    (r"\b(veteran|disabilit\w*)\b", "decline"),
+    # diversity surveys (answers from settings; anything not set is "prefer not to say")
+    (r"\bcommunit(y|ies) do you belong\b|which of the following communities", "communities"),
+    (r"\btransgender\b|\btrans\b", "transgender"),
+    (r"\bsexual orientation\b|\bsexuality\b", "sexual_orientation"),
+    (r"\bwhat is your (current )?age\b|\bage (range|group|bracket)\b|^age$", "age_range"),
+    (r"\bdisabilit\w*\b", "disability"),
+    (r"\bveteran\b", "decline"),
     (r"\b(religio\w*|belief|faith)\b", "religion"),
     # Northern Ireland style "community background" (Protestant / Roman Catholic / Neither)
     (r"\bcommunity background\b", "community_background"),
@@ -33,6 +39,7 @@ RULES: list[tuple[str, str]] = [
     (r"\be-?mail\b", "email"),
     # commuting / on-site questions are always "Yes" (checked before the city rule, which also mentions location)
     (r"\b(commut\w*|relocat\w*|on-?site|hybrid|in the office|office)\b", "commute"),
+    (r"\bcountry\b", "country"),
     (r"\b(address|city|location|where are you based)\b", "city"),
 ]
 
@@ -49,6 +56,9 @@ def lookup(label: str, profile: dict, answers: dict) -> str | None:
     known.setdefault("commute", "Yes")
     known.setdefault("heard_from", "LinkedIn")
     known.setdefault("decline", "Prefer not to say")
+    known.setdefault("country", (known["city"].split(",")[-1].strip() if "," in known["city"] else "United Kingdom"))
+    for k in ("communities", "transgender", "sexual_orientation", "age_range", "disability"):
+        known.setdefault(k, "Prefer not to say")
     if known.get("name"):
         parts = known["name"].split()
         known.setdefault("first_name", parts[0])

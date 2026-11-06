@@ -150,6 +150,62 @@ def _option_text(radio) -> str:
     return " ".join((txt or "").split())
 
 
+def _is_typeahead(el) -> bool:
+    try:
+        return el.evaluate("""e => e.getAttribute('role') === 'combobox' || !!e.getAttribute('aria-autocomplete')
+                                   || e.getAttribute('aria-haspopup') === 'listbox'""")
+    except Exception:
+        return False
+
+
+def _fill_typeahead(el, value: str) -> bool:
+    """Search boxes such as Location or Country only keep a value picked from their list, so type a short
+    search ('London' for 'London, United Kingdom'), wait for the list, and pick the best match."""
+    page = el.page
+    parts = [p.strip() for p in value.split(",") if p.strip()]
+    for query in dict.fromkeys([parts[0] if parts else value, value]):
+        try:
+            el.click()
+            el.fill("")
+            el.press_sequentially(query, delay=60)
+        except Exception:
+            return False
+        opts = page.locator("[role=listbox] [role=option]:visible, [role=option]:visible")
+        end = time.time() + 6
+        while time.time() < end and not opts.count():
+            time.sleep(0.5)
+        n = min(opts.count(), 15)
+        if not n:
+            continue
+        texts = []
+        for k in range(n):
+            try:
+                texts.append(" ".join(opts.nth(k).inner_text().split()))
+            except Exception:
+                texts.append("")
+        low = [t.lower() for t in texts]
+        best = None
+        for k, t in enumerate(low):  # e.g. "London, England, United Kingdom" for "London, United Kingdom"
+            if all(p.lower() in t for p in parts):
+                best = k
+                break
+        if best is None:
+            for k, t in enumerate(low):
+                if t.startswith(query.lower()) or query.lower() in t:
+                    best = k
+                    break
+        if best is None:
+            continue
+        opts.nth(best).click()
+        pause(0.5, 1)
+        return True
+    try:
+        el.press("Escape")
+    except Exception:
+        pass
+    return False
+
+
 def _fill_step(modal, ctx: dict) -> list[str]:
     """Fill every empty field in the current step. Returns labels it couldn't answer."""
     unknown: list[str] = []
@@ -162,7 +218,10 @@ def _fill_step(modal, ctx: dict) -> list[str]:
         if v == "__visa__":
             # a free-text box gets a true answer that doesn't give the date; a yes/no choice waits for you
             return None if options else A.VISA_TEXT
-        if v and options:
+        if v and "|" in v:  # several acceptable answers, best first ("Female|Woman", "Arab|Other")
+            alts = [a.strip() for a in v.split("|") if a.strip()]
+            v = next((p for p in (A.pick_option(a, options) for a in alts) if p), None) if options else alts[0]
+        elif v and options:
             v = A.pick_option(v, options)
         if v is None:
             v = A.ask_claude(label, options or [], ctx["cv_text"], ctx["profile"], ctx["answers"], ctx["job"] + ("\n" + ctx["job_description"][:4000] if ctx.get("job_description") else ""))
@@ -194,9 +253,13 @@ def _fill_step(modal, ctx: dict) -> list[str]:
             if v is None:
                 unknown.append(label or "a text box")
                 continue
+            if _is_typeahead(el):
+                if not _fill_typeahead(el, str(v)):
+                    unknown.append(label or "a search box")
+                continue
             el.fill(str(v))
             pause(0.3, 0.8)
-            # typeahead fields (e.g. city) need a pick from the list
+            # some plain-looking fields still pop up a list to pick from
             opt = modal.page.locator("[role=listbox] [role=option]").first
             if opt.count() and opt.is_visible():
                 opt.click()

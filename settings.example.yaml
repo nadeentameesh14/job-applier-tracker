@@ -100,8 +100,15 @@ answers:
   # Used when the job has no posted range. With a posted range, the middle of it is used.
   expected_salary: 55000
   # Optional answers for equal-opportunity questions (leave out to have the helper stop and ask you).
-  # gender: "Female"
+  # Optional diversity answers. "A|B" means: use A, or B when A isn't one of the choices.
+  # Anything left out is answered "Prefer not to say".
+  # gender: "Female|Woman"
   # ethnicity: "Prefer not to say"
+  # age_range: "Under 30|Prefer not to say"
+  # sexual_orientation: "Prefer not to say"
+  # transgender: "Prefer not to say"
+  # disability: "Prefer not to say"
+  # communities: "Prefer not to say"
   # nationality: ""
   # religion: "Prefer not to say"
 
