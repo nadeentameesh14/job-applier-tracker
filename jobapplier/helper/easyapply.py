@@ -248,6 +248,8 @@ def _fill_step(modal, ctx: dict) -> list[str]:
         try:
             if not el.is_visible() or (el.input_value() or "").strip():
                 continue
+            if el.evaluate("e => { const c = e.closest('[class*=select__control]'); return !!(c && c.querySelector('[class*=single-value], [class*=multi-value]')); }"):
+                continue  # a search box that already shows its choice
             label = _label_for(el)
             v = answer(label)
             if v is None:

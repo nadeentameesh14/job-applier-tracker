@@ -131,6 +131,7 @@ def _empty_required(form) -> list[str]:
                 if (e.type === 'radio') empty = !f.querySelector(`input[type=radio][name="${CSS.escape(e.name)}"]:checked`);
                 else if (e.type === 'checkbox') empty = !e.checked;
                 else if (e.type === 'file') empty = !(e.files && e.files.length);
+                else if (e.closest('[class*=select__control]') && e.closest('[class*=select__control]').querySelector('[class*=single-value], [class*=multi-value]')) empty = false;  // a search box keeps its choice beside its text box
                 else empty = !(e.value || '').trim();
                 if (!empty) continue;
                 const lab = (e.labels && e.labels[0] && e.labels[0].innerText) || e.getAttribute('aria-label') || e.name || 'a required field';
