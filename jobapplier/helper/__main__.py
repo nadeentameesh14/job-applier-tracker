@@ -453,14 +453,15 @@ def main(argv=None) -> None:
         kept_items = {}
         signed_in = ensure_signed_in(page)
 
-        # Company sites and LinkedIn Easy Apply take turns (one of each, in that order). Anything that opens
+        # One LinkedIn job, then company_sites_per_linkedin company sites, and so on. Anything that opens
         # LinkedIn (an Easy Apply job, or a LinkedIn job whose Apply button leads to a company site) waits at
         # least linkedin_gap_minutes after the last one, and there are at most linkedin_max_per_run of them.
         gap_lo, gap_hi = (list(settings.apply.get("linkedin_gap_minutes") or [20, 30]) * 2)[:2]
         li_max = int(settings.apply.get("linkedin_max_per_run", settings.apply.get("daily_cap_linkedin", 10)))
         li_done, li_next_ok, li_stop = 0, 0.0, None
         career_q, ea_q, approved_yet = list(career), [], wait is None
-        turn, announced = "linkedin", None
+        ratio = int(settings.apply.get("company_sites_per_linkedin", 3))
+        since_li, announced = ratio, None  # start with a LinkedIn job
 
         def uses_linkedin(i: dict) -> bool:
             return "linkedin.com" in i.get("url", "")
@@ -520,7 +521,7 @@ def main(argv=None) -> None:
                 continue
             # pick the next job: alternate, but never open LinkedIn before the gap has passed
             li_ready = li_jobs and time.time() >= li_next_ok
-            if li_jobs and (turn == "linkedin" or not off_li) and li_ready:
+            if li_jobs and (since_li >= ratio or not off_li) and li_ready:
                 i = (ea_q or [j for j in career_q if uses_linkedin(j)])[0]
             elif off_li:
                 i = off_li[0]
@@ -545,7 +546,7 @@ def main(argv=None) -> None:
             if uses_linkedin(i):
                 li_done += 1
                 li_next_ok = time.time() + random.uniform(gap_lo, gap_hi) * 60
-                turn = "company"
+                since_li = 0
                 li_stop = linkedin_warning(page)
                 if li_stop:
                     print(f"\nStopping all LinkedIn work: {li_stop}. The rest stay in the queue.", flush=True)
@@ -553,7 +554,7 @@ def main(argv=None) -> None:
                 elif li_done >= li_max:
                     print(f"  (reached {li_max} LinkedIn jobs for this run; the rest wait for next time)", flush=True)
             else:
-                turn = "linkedin"
+                since_li += 1
 
         left_li = ea_q + [i for i in career_q if uses_linkedin(i)]
         if left_li:

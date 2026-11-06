@@ -113,8 +113,9 @@ answers:
   # religion: "Prefer not to say"
 
 apply:
-  # Pace for anything that opens LinkedIn (Easy Apply, or finding a company-site link): at most this many
-  # per helper run, with a pause of this many minutes (a range) between them. Company sites go in between.
+  # Pace for anything that opens LinkedIn (Easy Apply, or finding a company-site link): one LinkedIn job, then
+  # this many company sites, at most linkedin_max_per_run per run, and never closer than linkedin_gap_minutes.
+  company_sites_per_linkedin: 3
   linkedin_max_per_run: 10
   linkedin_gap_minutes: [20, 30]
   daily_cap_linkedin: 15
