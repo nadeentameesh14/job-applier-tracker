@@ -13,6 +13,8 @@ import argparse
 import csv
 import html
 import json
+import random
+import re
 import subprocess
 import sys
 import threading
@@ -95,6 +97,26 @@ while it works (about a minute per job).</p>
 <button type=submit>Approve and apply</button> &nbsp; <button type=submit formaction=/skip>Not today</button></form>"""
 
 
+PENDING = object()
+LINKEDIN_WARNING = re.compile(  # LinkedIn's own wording, not phrases that job adverts use ("security checks", "restricted stock")
+    r"unusual activity (on|from) your account|your account (has been |is |was )?(temporarily )?restricted"
+    r"|let'?s do a quick security check|verify (it'?s|that it'?s) (really )?you"
+    r"|we('ve| have) (noticed|detected) .{0,60}automat", re.I)
+
+
+def linkedin_warning(page) -> str | None:
+    """What LinkedIn is showing if it has stopped trusting this session (a check, a warning, a restriction)."""
+    try:
+        if re.search(r"linkedin\.com/(checkpoint|authwall|uas/)", page.url):
+            return f"LinkedIn showed a check page ({page.url.split('?')[0]})"
+        if "linkedin.com" not in page.url:
+            return None
+        m = LINKEDIN_WARNING.search(page.locator("body").inner_text(timeout=3000)[:20000])
+        return f"LinkedIn shows: '{m.group(0)}'" if m else None
+    except Exception:
+        return None
+
+
 def approval_page(items: list[dict]):
     """Show the batch on a local web page. Returns a function that waits for your answer and gives the
     approved job ids (None if skipped)."""
@@ -131,7 +153,10 @@ def approval_page(items: list[dict]):
     webbrowser.open(f"http://127.0.0.1:{PORT}/")
     print(f"Approval page: http://127.0.0.1:{PORT}/ (open in your browser; career-site applications carry on meanwhile)")
 
-    def wait() -> list[str] | None:
+    def wait(block: bool = True):
+        """The approved job ids (None if you skipped the batch); PENDING if not block and you haven't answered yet."""
+        if not block and not done.is_set():
+            return PENDING
         done.wait()
         srv.shutdown()
         return result.get("ids")
@@ -426,52 +451,111 @@ def main(argv=None) -> None:
         kept_items = {}
         signed_in = ensure_signed_in(page)
 
-        # 1) company career sites: no approval needed
-        for i in career:
+        # Company sites and LinkedIn Easy Apply take turns (one of each, in that order). Anything that opens
+        # LinkedIn (an Easy Apply job, or a LinkedIn job whose Apply button leads to a company site) waits at
+        # least linkedin_gap_minutes after the last one, and there are at most linkedin_max_per_run of them.
+        gap_lo, gap_hi = (list(settings.apply.get("linkedin_gap_minutes") or [20, 30]) * 2)[:2]
+        li_max = int(settings.apply.get("linkedin_max_per_run", settings.apply.get("daily_cap_linkedin", 10)))
+        li_done, li_next_ok, li_stop = 0, 0.0, None
+        career_q, ea_q, approved_yet = list(career), [], wait is None
+        turn, announced = "linkedin", None
+
+        def uses_linkedin(i: dict) -> bool:
+            return "linkedin.com" in i.get("url", "")
+
+        def linkedin_ok() -> bool:
+            return signed_in and li_stop is None and li_done < li_max
+
+        def run_career(i: dict) -> None:
+            nonlocal page
             print(f"- [career site] {i['title']} at {i['company']} ... ", end="", flush=True)
             extra = None
             try:
                 url = i["url"]
-                if "linkedin.com" in url:
-                    if not signed_in:
-                        print("skipped: not signed in to LinkedIn, so the apply link can't be found")
-                        continue
+                if uses_linkedin(i):
                     dest = CS.resolve_linkedin(page, url)
                     if not dest:
                         page = record(i, type("R", (), {"status": "not_easy_apply", "detail": "Couldn't find the apply link"})(), page)
-                        continue
+                        return
                     extra = {"apply_url": dest}
                     if not CS.supported(dest):
                         page = record(i, type("R", (), {"status": "not_easy_apply",
                                                         "detail": f"Apply on the company site: {dest}"})(), page, extra)
-                        continue
+                        return
                     url = dest
                 res = CS.apply(page, url, pdf_for(i), ctx_for(i), submit=not args.test)
             except Exception as e:
                 res = type("R", (), {"status": "error", "detail": str(e)[:200]})()
             page = record(i, res, page, extra)
 
-        if career and not args.test:  # save progress now, in case you approve the LinkedIn batch much later
-            git(repo, "add", "-A", "data")
-            git(repo, "commit", "-m", f"Laptop helper: career sites {date.today().isoformat()}")
-            git(repo, "push")
+        def run_easy(i: dict) -> None:
+            nonlocal page
+            print(f"- [Easy Apply] {i['title']} at {i['company']} ... ", end="", flush=True)
+            try:
+                res = apply(page, i["url"], pdf_for(i), ctx_for(i), submit=not args.test)
+            except Exception as e:
+                res = type("R", (), {"status": "error", "detail": str(e)[:200]})()
+            page = record(i, res, page)
 
-        # 2) LinkedIn Easy Apply: only what you approved
-        if wait:
-            approved = wait()
-            chosen = [i for i in items if i["job_id"] in set(approved or [])]
-            for i in items:
-                if i not in chosen:
-                    mark(repo, i, T.SKIPPED, "Not approved")
-            if chosen and not signed_in:
-                signed_in = ensure_signed_in(page)
-            for i in chosen if signed_in else []:
-                print(f"- [Easy Apply] {i['title']} at {i['company']} ... ", end="", flush=True)
-                try:
-                    res = apply(page, i["url"], pdf_for(i), ctx_for(i), submit=not args.test)
-                except Exception as e:
-                    res = type("R", (), {"status": "error", "detail": str(e)[:200]})()
-                page = record(i, res, page)
+        while True:
+            if not approved_yet:
+                got = wait(block=not career_q and not ea_q)
+                if got is not PENDING:
+                    approved_yet = True
+                    chosen = [i for i in items if i["job_id"] in set(got or [])]
+                    for i in items:
+                        if i not in chosen:
+                            mark(repo, i, T.SKIPPED, "Not approved")
+                    ea_q = chosen
+                    if ea_q and not signed_in:
+                        signed_in = ensure_signed_in(page)
+            off_li = [i for i in career_q if not uses_linkedin(i)]
+            li_jobs = (ea_q + [i for i in career_q if uses_linkedin(i)]) if linkedin_ok() else []
+            if not off_li and not li_jobs:
+                if approved_yet:
+                    break
+                time.sleep(5)  # waiting for you to approve the Easy Apply batch
+                continue
+            # pick the next job: alternate, but never open LinkedIn before the gap has passed
+            li_ready = li_jobs and time.time() >= li_next_ok
+            if li_jobs and (turn == "linkedin" or not off_li) and li_ready:
+                i = (ea_q or [j for j in career_q if uses_linkedin(j)])[0]
+            elif off_li:
+                i = off_li[0]
+            else:
+                left = max(0, li_next_ok - time.time())
+                if li_next_ok != announced:
+                    announced = li_next_ok
+                    print(f"  (waiting {left / 60:.0f} min before the next LinkedIn job)", flush=True)
+                time.sleep(min(left, 60) + 1)
+                continue
+            if i in ea_q:
+                ea_q.remove(i)
+                run_easy(i)
+            else:
+                career_q.remove(i)
+                run_career(i)
+            if not args.test and len(done_items) % 3 == 0:  # save progress as it goes, in case the run is stopped
+                git(repo, "add", "-A", "data")
+                git(repo, "commit", "-m", f"Laptop helper: progress {date.today().isoformat()}")
+                git(repo, "pull", "--rebase", "--autostash")
+                git(repo, "push")
+            if uses_linkedin(i):
+                li_done += 1
+                li_next_ok = time.time() + random.uniform(gap_lo, gap_hi) * 60
+                turn = "company"
+                li_stop = linkedin_warning(page)
+                if li_stop:
+                    print(f"\nStopping all LinkedIn work: {li_stop}. The rest stay in the queue.", flush=True)
+                    notify("Job helper stopped LinkedIn", li_stop + ". Nothing more will be done on LinkedIn today.")
+                elif li_done >= li_max:
+                    print(f"  (reached {li_max} LinkedIn jobs for this run; the rest wait for next time)", flush=True)
+            else:
+                turn = "linkedin"
+
+        left_li = ea_q + [i for i in career_q if uses_linkedin(i)]
+        if left_li:
+            print(f"{len(left_li)} LinkedIn job(s) left for next time.")
         if args.test:
             wait_for_you(ctx, "Test run finished. Look over the filled-in forms, then press Enter (or close the browser)...")
         elif keep:
