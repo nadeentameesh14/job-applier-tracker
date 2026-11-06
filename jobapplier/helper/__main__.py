@@ -442,10 +442,19 @@ def try_one(repo: Path, settings, args) -> None:
     with sync_playwright() as pw:
         ctx = browser(pw)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        if "linkedin.com" in url and not ensure_signed_in(page):
+            print("Not signed in to LinkedIn.")
+            return
+        try:  # read the advert so answers like "why do you want to join us?" know the company and role
+            page.goto(url, wait_until="domcontentloaded")
+            page.wait_for_timeout(3000)
+            ctx_d["job"] = page.title().replace("| LinkedIn", "").strip()
+            body = page.locator("#job-details, .jobs-description, article, main").first
+            ctx_d["job_description"] = (body.inner_text() if body.count() else page.locator("body").inner_text())[:4000]
+            print(f"  Job: {ctx_d['job']}")
+        except Exception:
+            pass
         if "linkedin.com" in url:
-            if not ensure_signed_in(page):
-                print("Not signed in to LinkedIn.")
-                return
             res = apply(page, url, pdfs[-1], ctx_d, submit=False)
             if res.status == "not_easy_apply":
                 print("Not an Easy Apply job; finding where it applies...")

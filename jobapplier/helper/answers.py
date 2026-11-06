@@ -109,6 +109,42 @@ def _learned() -> dict:
         return {}
 
 
+MOTIVATION = re.compile(
+    r"\bwhy (do you|are you|would you|this|us|join|should we)|\bwhat (excites|interests|attracts|draws|motivates) you"
+    r"|\binterest(ed)? in (this|the|our|joining)|\bcover (letter|note)|\btell us (about|why)|\bmotivat"
+    r"|\bwhat (makes you|would you bring)|\bwhy .{0,40}\b(role|company|team|position|join)\b"
+    r"|^\s*why\s+[\w&.'-]+(\s+[\w&.'-]+)?\s*\??\s*\*?\s*$", re.I)
+
+
+def write_motivation(exe: str, label: str, cv_text: str, profile: dict, answers: dict, job: str) -> str | None:
+    """'Why do you want to join us?' and the like: research the company, then link what's interesting about it
+    to the candidate's real experience. Uses web search through Claude Code."""
+    global last_problem
+    prompt = (
+        "Write the candidate's answer to this job-application question, in the first person, as the candidate.\n"
+        "1) Research the company first (web search their site, product, mission and recent news) and pick one or two "
+        "specific things that are genuinely interesting or relevant to this role.\n"
+        "2) Connect them to the candidate's real skills and experience from the CV, and say how that would help the "
+        "company in this role. Use only experience that is on the CV or in the facts: never invent anything.\n"
+        "Style: warm, specific and confident, plain English, 80 to 150 words (shorter if the box looks small), "
+        "no greeting or sign-off, no bullet points, no em dashes. Don't mention visas, salary or notice period.\n\n"
+        f"<question>{label}</question>\n<job>{job}</job>\n<cv>\n{cv_text}\n</cv>\n"
+        f"<facts>\n{json.dumps({k: v for k, v in {**profile, **answers}.items() if k not in ('expected_salary', 'phone', 'email')}, default=str)}\n</facts>\n"
+        "Reply with ONLY the final answer inside <answer></answer> tags."
+    )
+    try:
+        r = subprocess.run([exe, "-p", "--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch,WebFetch",
+                            "--model", "sonnet"], input=prompt, capture_output=True, text=True, timeout=300)
+    except Exception as e:
+        last_problem = f"Claude Code didn't run: {e}"
+        return None
+    ans = clean_answer(r.stdout or "")
+    if r.returncode or not ans or ans.upper().startswith("UNKNOWN"):
+        last_problem = "Claude couldn't write the answer: " + ((r.stderr or r.stdout or "").strip()[-200:])
+        return None
+    return ans.replace("\u2014", ", ").strip()
+
+
 def ask_claude(label: str, options: list[str], cv_text: str, profile: dict, answers: dict, job: str) -> str | None:
     """Ask Claude Code (your subscription) for a truthful answer. Returns None when it can't tell from the CV.
     Answers to general questions are remembered in ~/.job-applier/learned_answers.json (you can edit it)."""
@@ -123,6 +159,8 @@ def ask_claude(label: str, options: list[str], cv_text: str, profile: dict, answ
     if not exe:
         last_problem = "Claude Code isn't installed on this computer, so questions not in your settings can't be answered"
         return None
+    if not options and MOTIVATION.search(label):
+        return write_motivation(exe, label, cv_text, profile, answers, job)
     prompt = (
         "You fill in one job-application question for the candidate below. Answer ONLY from the CV and facts; "
         "never invent experience. If they don't settle it, answer exactly UNKNOWN. For years of experience, count "
