@@ -417,11 +417,23 @@ def apply(page, job_url: str, cv_pdf: Path, ctx: dict, submit: bool = True) -> R
             if not submit:
                 return Result("needs_you", "Test mode: everything is filled in; review it and press Submit yourself")
             submit_btn.click()
-            pause(2, 4)
+            # only count it as applied once LinkedIn confirms it
+            sent = re.compile(r"application (was )?sent|your application was submitted|applied \d+ \w+ ago|^\s*applied\s*$", re.I)
+            confirmed = False
+            end = time.time() + 20
+            while time.time() < end and not confirmed:
+                time.sleep(2)
+                try:
+                    confirmed = bool(page.get_by_text(sent).count())
+                except Exception:
+                    pass
             done = page.locator("button[aria-label='Dismiss'], button:has-text('Done')").first
             if done.count():
                 done.click()
-            return Result("applied")
+            if confirmed:
+                return Result("applied")
+            f = dump_debug(page, f"{job_url.rstrip('/').split('/')[-1]}_submit")
+            return Result("needs_you", f"Pressed Submit but LinkedIn didn't confirm it; check the job page (details saved to {f})")
         nxt = modal.get_by_role("button", name=re.compile(r"continue to next step|review your application|^next$|^review$|^continue$", re.I)).first
         if not nxt.count():
             f = dump_debug(page, f"{job_url.rstrip('/').split('/')[-1]}_nonext{step}")
