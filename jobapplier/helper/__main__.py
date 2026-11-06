@@ -239,6 +239,8 @@ def main(argv=None) -> None:
     ap.add_argument("--ask", action="append", default=[], metavar="WORDS",
                     help="always stop and ask you at questions containing these words (can repeat)")
     ap.add_argument("--ping", action="store_true", help="just show a test notification")
+    ap.add_argument("--try", dest="try_url", metavar="JOB_URL",
+                    help="safe test on one job link (LinkedIn or a career site): fills the form, never submits")
     ap.add_argument("--login", action="store_true", help="open the browser to sign in to LinkedIn, then exit")
     # unknown options are allowed until after the update below, so a newer option works on first use
     args, unknown_opts = ap.parse_known_args(argv)
@@ -288,6 +290,8 @@ def main(argv=None) -> None:
         import os
         os.execv(sys.executable, [sys.executable, "-m", "jobapplier.helper", *sys.argv[1:], "--no-restart"])
     settings = load_settings(repo / "settings.yaml")
+    if args.try_url:
+        return try_one(repo, settings, args)
     items = load_queue(repo)[: settings.apply.get("daily_cap_linkedin", 15)]
     career = load_career(repo)[: settings.apply.get("daily_cap_auto", 15)
                                + settings.apply.get("daily_cap_manual", settings.apply.get("daily_cap_linkedin", 15))]
@@ -418,6 +422,50 @@ def main(argv=None) -> None:
     notify("Job helper finished", f"{applied} applied" + (f", {counts['needs_you']} needed you" if counts["needs_you"] else ""),
            popup=False)
     print(f"\nDone: {applied} applied." + ("" if pushed.returncode == 0 else " (Couldn't push the tracker update; it will go next time.)"))
+
+
+def try_one(repo: Path, settings, args) -> None:
+    """Fill in the application for one job link, exactly as a real run would, but never press Submit."""
+    from playwright.sync_api import sync_playwright
+    from . import careersite as CS
+    from .easyapply import apply
+
+    url = args.try_url.strip()
+    pdfs = sorted((repo / "data" / "applications").glob("*/*_cv.pdf"), key=lambda p: p.stat().st_mtime)
+    if not pdfs:
+        print("No tailored CV found yet to upload; run the daily job first.")
+        return
+    ctx_d = {"profile": settings.profile, "cv_text": CV(settings.cv_path).full_text(), "answers": dict(settings.answers),
+             "job": "this job", "job_title": "", "job_description": "",
+             "always_ask": list(settings.apply.get("always_ask") or []) + args.ask}
+    print(f"Trying {url} (test: nothing will be submitted; uploading {pdfs[-1].name} from your latest tailored CV)")
+    with sync_playwright() as pw:
+        ctx = browser(pw)
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        if "linkedin.com" in url:
+            if not ensure_signed_in(page):
+                print("Not signed in to LinkedIn.")
+                return
+            res = apply(page, url, pdfs[-1], ctx_d, submit=False)
+            if res.status == "not_easy_apply":
+                print("Not an Easy Apply job; finding where it applies...")
+                dest = CS.resolve_linkedin(page, url)
+                print(f"  It applies at: {dest or 'unknown'}")
+                if dest and CS.supported(dest):
+                    res = CS.apply(page, dest, pdfs[-1], ctx_d, submit=False)
+                elif dest:
+                    page.goto(dest)
+                    res = type("R", (), {"status": "not supported", "detail": "That site isn't one the helper fills in yet"})()
+        else:
+            res = CS.apply(page, url, pdfs[-1], ctx_d, submit=False)
+        print(f"Result: {res.status}" + (f": {res.detail}" if res.detail else ""))
+        if res.status == "needs_you" and "Test mode" not in res.detail:
+            notify("Job helper needs you (test)", res.detail)
+        wait_for_you(ctx, "Look over the form in the browser, then press Enter here (or close the browser).")
+        try:
+            ctx.close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
