@@ -16,6 +16,7 @@ import json
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from datetime import date
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -141,10 +142,21 @@ def browser(pw):
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     # no fixed viewport: the page fills the real window, which opens maximised
     kw = dict(user_data_dir=str(PROFILE_DIR), headless=False, no_viewport=True, args=["--start-maximized", "--window-position=0,0", "--window-size=1440,900"])
-    try:
-        ctx = pw.chromium.launch_persistent_context(channel="chrome", **kw)  # your installed Chrome
-    except Exception:
-        ctx = pw.chromium.launch_persistent_context(**kw)
+    # Right after login the Mac may not be ready to open windows yet, so try a few times before giving up.
+    ctx, last = None, None
+    for attempt in range(4):
+        try:
+            ctx = pw.chromium.launch_persistent_context(channel="chrome", **kw)  # your installed Chrome
+            break
+        except Exception as e:
+            last = e
+            print(f"Couldn't open Chrome (try {attempt + 1} of 4): {str(e).splitlines()[0][:200]}", flush=True)
+            time.sleep(30)
+    if ctx is None:
+        try:
+            ctx = pw.chromium.launch_persistent_context(**kw)
+        except Exception:
+            raise RuntimeError(f"Couldn't open Chrome: {last}") from last
     # LinkedIn may draw the Easy Apply window inside a "closed" shadow root, which automation can't
     # see into. Make every shadow root open so the helper can read the form like you can.
     ctx.add_init_script("""(() => { const o = Element.prototype.attachShadow;
