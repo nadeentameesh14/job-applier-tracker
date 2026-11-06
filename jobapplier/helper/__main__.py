@@ -349,6 +349,9 @@ def main(argv=None) -> None:
     settings = load_settings(repo / "settings.yaml")
     if args.try_url:
         return try_one(repo, settings, args)
+    if settings.apply.get("helper_paused"):
+        print("The helper is paused (apply.helper_paused in settings.yaml), so it won't open LinkedIn or apply anywhere.")
+        return
     items = load_queue(repo)[: settings.apply.get("daily_cap_linkedin", 15)]
     career = load_career(repo)[: settings.apply.get("daily_cap_auto", 15)
                                + settings.apply.get("daily_cap_manual", settings.apply.get("daily_cap_linkedin", 15))]
