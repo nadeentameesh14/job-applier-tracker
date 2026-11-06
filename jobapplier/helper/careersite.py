@@ -34,30 +34,52 @@ def application_url(url: str) -> str:
     return u
 
 
+APPLY_NAME = re.compile(r"^\s*apply(\s+now)?\s*$|apply on (the )?company|apply to .{1,80} on (the )?company|^\s*apply\s*(\(|external|opens)", re.I)
+
+
+def _apply_button(page):
+    """LinkedIn's own Apply button for a job that applies on the company site (not Easy Apply, and not
+    any other link on the page that happens to contain the word 'apply')."""
+    for role in ("button", "link"):
+        cands = page.get_by_role(role, name=APPLY_NAME)
+        for k in range(min(cands.count(), 8)):
+            c = cands.nth(k)
+            try:
+                if c.is_visible() and "easy apply" not in (c.inner_text() or "").lower():
+                    return c
+            except Exception:
+                continue
+    c = page.locator("#jobs-apply-button-id, button.jobs-apply-button, a.jobs-apply-button").first
+    return c if c.count() else None
+
+
 def resolve_linkedin(page, url: str) -> str | None:
     """Open a LinkedIn job while signed in and find where its Apply button leads."""
     page.goto(url, wait_until="domcontentloaded")
-    pause(2, 4)
-    btn = page.locator("button.jobs-apply-button, a.jobs-apply-button, a:has-text('Apply'), button:has-text('Apply')")
-    btn = btn.filter(has_not_text=re.compile("easy apply", re.I)).first
-    try:
-        btn.wait_for(state="visible", timeout=10_000)
-    except Exception:
+    pause(3, 5)
+    btn = _apply_button(page)
+    if btn is None:
+        dump_debug(page, "resolve_" + re.sub(r"\D", "", url)[-12:])
         return None
     href = btn.get_attribute("href") or ""
     if href.startswith("http") and "linkedin.com" not in href:
         return href
-    if "linkedin.com/redir" in href or "url=" in href:
+    if "url=" in href:
         q = parse_qs(urlparse(href).query).get("url")
         if q:
             return unquote(q[0])
+    before = page.url
     try:
-        with page.context.expect_page(timeout=15_000) as newp:
+        with page.context.expect_page(timeout=20_000) as newp:
             btn.click()
-            pause(1, 2)
-            cont = page.get_by_role("button", name=re.compile(r"^continue|apply on company", re.I)).first
-            if cont.count() and cont.is_visible():
-                cont.click()
+            pause(1.5, 2.5)
+            # LinkedIn sometimes asks first ("Share your profile?" / "Continue to apply")
+            cont = page.get_by_role("button", name=re.compile(r"^continue|apply on company|^apply$", re.I))
+            for k in range(min(cont.count(), 4)):
+                c = cont.nth(k)
+                if c.is_visible():
+                    c.click()
+                    break
         tab = newp.value
         try:
             tab.wait_for_load_state("domcontentloaded", timeout=20_000)
@@ -68,6 +90,12 @@ def resolve_linkedin(page, url: str) -> str | None:
         tab.close()
         return dest
     except Exception:
+        # some links open in the same tab instead
+        if page.url != before and "linkedin.com" not in page.url:
+            dest = page.url
+            page.go_back()
+            return dest
+        dump_debug(page, "resolve_" + re.sub(r"\D", "", url)[-12:])
         return None
 
 
