@@ -279,20 +279,64 @@ def _fill_step(modal, ctx: dict) -> list[str]:
     return unknown
 
 
+EASY_NAME = re.compile(r"easy apply", re.I)
+APPLY_ANY = re.compile(r"^\s*(easy )?apply\b|apply on (the )?company|apply to .{1,80}", re.I)
+
+
+def _is_job_button(el) -> bool:
+    """True for the job's own button, not a search filter or a link in the page's menus."""
+    try:
+        return el.evaluate("""e => {
+            if (e.closest('nav, #global-nav, header.global-nav, [role=navigation], [role=search], .search-reusables__filters-bar, '
+                          + '.jobs-search-box, [data-testid*=filter], [aria-label*=filter i]')) return false;
+            const h = (e.getAttribute('href') || '');
+            if (/f_AL=|\\/jobs\\/search|\\/jobs\\/collections/.test(h)) return false;
+            const r = e.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+        }""")
+    except Exception:
+        return False
+
+
+def _easy_apply_button(page, wait: float = 10):
+    """The job's Easy Apply button, or None if the job only has a normal Apply button (or none).
+    Never returns a filter or menu link that merely says 'Easy Apply'."""
+    end = time.time() + wait
+    while True:
+        saw_apply = False
+        for role in ("button", "link"):
+            cands = page.get_by_role(role, name=APPLY_ANY)
+            for k in range(min(cands.count(), 10)):
+                c = cands.nth(k)
+                if not _is_job_button(c):
+                    continue
+                saw_apply = True
+                try:
+                    name = (c.get_attribute("aria-label") or "") + " " + (c.inner_text() or "")
+                except Exception:
+                    continue
+                if EASY_NAME.search(name):
+                    return c
+        if saw_apply or time.time() > end:
+            return None  # the job's apply button is there and it isn't Easy Apply
+        time.sleep(1)
+
+
 def apply(page, job_url: str, cv_pdf: Path, ctx: dict, submit: bool = True) -> Result:
     page.goto(job_url, wait_until="domcontentloaded")
     pause(2, 4)
     if page.get_by_text(re.compile(r"Applied \d+ \w+ ago|Application submitted", re.I)).count():
         return Result("already_applied")
-    btn = page.locator("button.jobs-apply-button, button:has-text('Easy Apply'), a:has-text('Easy Apply')").first
-    try:
-        btn.wait_for(state="visible", timeout=10_000)
-    except Exception:
-        pass
-    if not btn.count() or "easy apply" not in (btn.inner_text() or "").lower():
+    btn = _easy_apply_button(page)
+    if btn is None:
         return Result("not_easy_apply", "No Easy Apply button (the job may apply on the company site or be closed)")
+    job_id = re.sub(r"\D", "", job_url.rstrip("/").split("/")[-1])
     btn.click()
     pause(1.5, 3)
+    if job_id and job_id not in page.url and "/apply" not in page.url:
+        # the click left the job (it wasn't the job's own button); don't go further
+        page.goto(job_url, wait_until="domcontentloaded")
+        return Result("not_easy_apply", "No Easy Apply button (the job may apply on the company site or be closed)")
     ctx = {**ctx, "cv_pdf": str(cv_pdf)}
     for step in range(12):
         modal = find_modal(page, timeout=20 if step == 0 else 8)
