@@ -101,7 +101,9 @@ PENDING = object()
 LINKEDIN_WARNING = re.compile(  # LinkedIn's own wording, not phrases that job adverts use ("security checks", "restricted stock")
     r"unusual activity (on|from) your account|your account (has been |is |was )?(temporarily )?restricted"
     r"|let'?s do a quick security check|verify (it'?s|that it'?s) (really )?you"
-    r"|we('ve| have) (noticed|detected) .{0,60}automat", re.I)
+    r"|we('ve| have) (noticed|detected) .{0,60}automat"
+    r"|(reached|hit) (the|your|our) (daily )?(easy apply |application )?limit|limit daily submissions"
+    r"|(we('re| are) )?paus(e|ing) (your )?(linkedin )?easy apply|applying too (fast|quickly)|too many applications", re.I)
 
 
 def linkedin_warning(page) -> str | None:
