@@ -25,6 +25,26 @@ def _tab(path: Path, key: str | None = None, newest_first: bool = False) -> dict
     return {"header": header, "rows": body, "key": key}
 
 
+FIRST = ["status", "company", "title", "date_applied", "link", "location", "notes", "fit_score", "salary_listed"]
+ORDER = ["Needs you", "Apply on company site", "Applied", "Awaiting approval", "Ready to auto-apply"]
+
+
+def _readable(tab: dict) -> dict:
+    """Put what you look at first on the left (status, company, role, date applied, link) and sort the jobs
+    so the ones needing you come first, then applied ones, newest first within each group."""
+    h = tab["header"]
+    cols = [c for c in FIRST if c in h] + [c for c in h if c not in FIRST]
+    idx = [h.index(c) for c in cols]
+    rows = [[r[i] if i < len(r) else "" for i in idx] for r in tab["rows"]]
+    si, di, fi = cols.index("status") if "status" in cols else None, \
+        cols.index("date_applied") if "date_applied" in cols else None, cols.index("date_found") if "date_found" in cols else None
+    if si is not None:
+        rank = lambda r: ORDER.index(r[si]) if r[si] in ORDER else len(ORDER)
+        rows.sort(key=lambda r: (r[di] if di is not None else "") or (r[fi] if fi is not None else ""), reverse=True)
+        rows.sort(key=rank)  # stable: keeps newest first inside each status
+    return {**tab, "header": cols, "rows": rows}
+
+
 def sync() -> str:
     url, token = os.environ.get("SHEET_WEBHOOK_URL", "").strip(), os.environ.get("SHEET_TOKEN", "").strip()
     if not url:
@@ -32,7 +52,7 @@ def sync() -> str:
     tabs = {}
     t = _tab(DATA / "tracker.csv", key="job_id")
     if t:
-        tabs["Tracker"] = t
+        tabs["Tracker"] = _readable(t)
     s = _tab(DATA / "scores.csv", newest_first=True)
     if s:
         tabs["Scores"] = s
